@@ -26,7 +26,7 @@ from typing import Optional
 
 
 def _repo_root() -> Path:
-    return Path(__file__).resolve().parents[3]
+    return Path(__file__).resolve().parents[2]
 
 
 def _chroma_path() -> Path:
