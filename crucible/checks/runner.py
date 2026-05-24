@@ -53,6 +53,8 @@ def main() -> int:
         sev = f['severity']
         print(f'\n[{sev}] {f.get("file", "")}')
         print(f'  {f["message"]}')
+        if citation := f.get('amendment_citation'):
+            print(f'  → {citation}')
 
     print()
     if violations:

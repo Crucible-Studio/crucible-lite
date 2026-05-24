@@ -17,10 +17,12 @@ FIRMWARE_EXTENSIONS = {'.c', '.cpp', '.h', '.ino'}
 
 # Matches a bare numeric literal on a new (+) diff line.
 # Excludes: array indices, version strings, port numbers, hex addresses.
+# Error 14: re.IGNORECASE added so "Traces to" in any capitalisation is excluded.
 _NUMERIC = re.compile(
     r'^\+(?!.*//.*traces to).*?'          # new line, not already cited
     r'(?<!["\'/\w#])(\d+\.?\d*|\.\d+)'   # numeric literal
-    r'(?!["\'\w])'                         # not inside string/identifier
+    r'(?!["\'\w])',                        # not inside string/identifier
+    re.IGNORECASE                          # Error 14: case-insensitive citation pre-check
 )
 
 # A comment on the same or adjacent line that names a primitive or cites Amendment 1.
@@ -97,8 +99,9 @@ def run(repo_root: Path, base_ref: Optional[str] = None) -> list[dict]:
             continue
 
         # Keep a rolling window of context to check for adjacent citations.
+        # Error 21B: context window expanded from 10 to 20 lines (±10 effective).
         context_lines.append(diff_line)
-        if len(context_lines) > 10:
+        if len(context_lines) > 20:
             context_lines.pop(0)
 
         match = _NUMERIC.match(diff_line)
@@ -106,8 +109,9 @@ def run(repo_root: Path, base_ref: Optional[str] = None) -> list[dict]:
             continue
 
         constant = match.group(1)
-        # Skip trivial values unlikely to be domain constants.
-        if float(constant) in (0, 1, 2, 10, 100, 1000):
+        # Error 18/21C: skip trivial structural values unlikely to be domain constants.
+        # Extended set includes 0.5 and single-digit precision args to round().
+        if float(constant) in {0, 0.5, 1, 2, 10, 100, 1000}:
             continue
 
         # Check surrounding context for a citation.

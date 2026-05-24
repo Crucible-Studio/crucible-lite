@@ -40,3 +40,10 @@ bleak>=0.21.0              # BLE UART console (NUS) and GATT client
 # -----------------------------------------------------------------------------
 
 pytest>=7.4.0
+
+# -----------------------------------------------------------------------------
+# RAG stack (Track C — optional, install when using /wiki generate or RAG query)
+# -----------------------------------------------------------------------------
+
+chromadb>=0.4.0            # vector store for semantic corpus retrieval
+sentence-transformers>=2.2.0  # local embeddings (all-MiniLM-L6-v2), no API key needed

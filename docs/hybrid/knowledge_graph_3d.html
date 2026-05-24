@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Crucible — Knowledge Graph</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #080c14; font-family: 'SF Mono', 'Fira Code', monospace; overflow: hidden; }
+
+  #graph { width: 100vw; height: 100vh; }
+
+  /* HUD */
+  #hud {
+    position: fixed; top: 20px; left: 24px;
+    color: rgba(255,255,255,0.85); pointer-events: none; z-index: 10;
+  }
+  #hud h1 { font-size: 13px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase;
+             color: #a78bfa; margin-bottom: 4px; }
+  #hud .sub { font-size: 11px; color: rgba(255,255,255,0.35); margin-bottom: 16px; }
+
+  /* Legend */
+  #legend {
+    position: fixed; bottom: 24px; left: 24px;
+    z-index: 10; pointer-events: none;
+  }
+  .legend-section { margin-bottom: 14px; }
+  .legend-title { font-size: 9px; letter-spacing: 0.18em; text-transform: uppercase;
+                  color: rgba(255,255,255,0.3); margin-bottom: 6px; }
+  .legend-row { display: flex; align-items: center; gap: 7px;
+                font-size: 10px; color: rgba(255,255,255,0.55); margin-bottom: 3px; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+  .line { width: 16px; height: 2px; border-radius: 1px; flex-shrink: 0; }
+
+  /* Tooltip */
+  #tooltip {
+    position: fixed; pointer-events: none; z-index: 20;
+    background: rgba(8,12,20,0.92); border: 1px solid rgba(167,139,250,0.25);
+    border-radius: 6px; padding: 10px 13px; max-width: 260px;
+    backdrop-filter: blur(8px); display: none;
+  }
+  #tooltip .tt-type  { font-size: 9px; letter-spacing: 0.14em; text-transform: uppercase;
+                       color: #a78bfa; margin-bottom: 4px; }
+  #tooltip .tt-label { font-size: 13px; font-weight: 600; color: #fff; margin-bottom: 4px; }
+  #tooltip .tt-unit  { font-size: 10px; color: rgba(255,255,255,0.45); margin-bottom: 6px; }
+  #tooltip .tt-notes { font-size: 10px; color: rgba(255,255,255,0.6); line-height: 1.5; }
+
+  /* Stats */
+  #stats {
+    position: fixed; top: 20px; right: 24px;
+    font-size: 10px; color: rgba(255,255,255,0.25); text-align: right;
+    pointer-events: none; z-index: 10; line-height: 1.8;
+  }
+</style>
+</head>
+<body>
+
+<div id="hud">
+  <h1>Crucible &mdash; Knowledge Graph</h1>
+  <div class="sub">corpus-supremacy · Amendment 13</div>
+</div>
+
+<div id="legend">
+  <div class="legend-section">
+    <div class="legend-title">Node type</div>
+    <div class="legend-row"><div class="dot" style="background:#f59e0b"></div>primitive</div>
+    <div class="legend-row"><div class="dot" style="background:#38bdf8"></div>signal</div>
+    <div class="legend-row"><div class="dot" style="background:#fb923c"></div>threshold</div>
+    <div class="legend-row"><div class="dot" style="background:#a78bfa"></div>amendment</div>
+    <div class="legend-row"><div class="dot" style="background:#34d399"></div>bill</div>
+    <div class="legend-row"><div class="dot" style="background:#818cf8"></div>stage</div>
+    <div class="legend-row"><div class="dot" style="background:#22d3ee"></div>test</div>
+    <div class="legend-row"><div class="dot" style="background:#f87171"></div>failure_mode</div>
+  </div>
+  <div class="legend-section">
+    <div class="legend-title">Relation</div>
+    <div class="legend-row"><div class="line" style="background:#94a3b8"></div>traces_to</div>
+    <div class="legend-row"><div class="line" style="background:#38bdf8"></div>measured_via</div>
+    <div class="legend-row"><div class="line" style="background:#f87171"></div>caught_by</div>
+    <div class="legend-row"><div class="line" style="background:#a78bfa"></div>authorized_by</div>
+    <div class="legend-row"><div class="line" style="background:#f59e0b"></div>governs</div>
+    <div class="legend-row"><div class="line" style="background:#34d399"></div>closes</div>
+  </div>
+</div>
+
+<div id="stats"></div>
+<div id="tooltip"></div>
+<div id="graph"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/3d-force-graph@1.73.4/dist/3d-force-graph.min.js"></script>
+<script>
+// ── Colour maps ───────────────────────────────────────────────────────────────
+
+const NODE_COLOR = {
+  primitive:    '#f59e0b',
+  signal:       '#38bdf8',
+  threshold:    '#fb923c',
+  amendment:    '#a78bfa',
+  bill:         '#34d399',
+  stage:        '#818cf8',
+  test:         '#22d3ee',
+  failure_mode: '#f87171',
+};
+
+const LINK_COLOR = {
+  traces_to:    '#94a3b8',
+  measured_via: '#38bdf8',
+  caught_by:    '#f87171',
+  authorized_by:'#a78bfa',
+  governs:      '#f59e0b',
+  closes:       '#34d399',
+};
+
+const NODE_SIZE = {
+  primitive:    7,
+  amendment:    6,
+  stage:        5.5,
+  signal:       5,
+  threshold:    4.5,
+  bill:         4,
+  test:         4,
+  failure_mode: 3.5,
+};
+
+// ── Graph data ────────────────────────────────────────────────────────────────
+// Seeded from knowledge_map.json _example + Amendments 12-13 context.
+// Replace this block with a fetch() of knowledge_map.json once the project
+// has real domain primitives ratified.
+
+const GRAPH_DATA = {
+  nodes: [
+    // Domain primitives
+    { id: 'primitive:cadence',        type: 'primitive',    label: 'Cadence',                 unit: 'steps/min', notes: 'Fundamental temporal frequency of gait — anchors all step-detection thresholds' },
+    { id: 'primitive:stance',         type: 'primitive',    label: 'Stance Phase',            unit: '%',         notes: 'Fraction of gait cycle foot is in contact with ground — governs FSM state transitions' },
+    { id: 'primitive:signal_quality', type: 'primitive',    label: 'Signal Quality',          unit: 'SNR dB',    notes: 'Physical SNR of IMU measurement path — governs filter cutoff selection' },
+    { id: 'primitive:hybrid_privacy', type: 'primitive',    label: 'Hybrid Privacy Boundary', unit: null,        notes: 'Tier boundary between local-only and cloud-forwardable corpus content (Amendment 13)' },
+
+    // Signals
+    { id: 'signal:accel_z',   type: 'signal', label: 'Accel Z-axis', unit: 'm/s²',  notes: 'IMU vertical axis — primary step detection input' },
+    { id: 'signal:gyro_y',    type: 'signal', label: 'Gyro Y-axis',  unit: 'dps',   notes: 'Mediolateral angular velocity — stance/swing discriminator' },
+    { id: 'signal:ble_rssi',  type: 'signal', label: 'BLE RSSI',     unit: 'dBm',   notes: 'Radio link quality — governs transport retry and packet loss estimation' },
+
+    // Thresholds
+    { id: 'threshold:pushoff',       type: 'threshold', label: 'Push-off Guard',      unit: 'dps',       notes: '30 dps minimum — derived from push-off angular velocity + FPU headroom' },
+    { id: 'threshold:cadence_min',   type: 'threshold', label: 'Min Cadence Gate',    unit: 'steps/min', notes: '40 steps/min lower bound — physiological rest-motion boundary' },
+    { id: 'threshold:tier_private',  type: 'threshold', label: 'PRIVATE Tier Limit',  unit: null,        notes: 'Hard boundary: src/signals.py and algorithm.py never forwarded to cloud agents' },
+    { id: 'threshold:tier_derived',  type: 'threshold', label: 'DERIVED-OK Limit',    unit: null,        notes: 'Scalars and plot paths safe for cloud forwarding — no raw arrays' },
+    { id: 'threshold:fsm_swing',     type: 'threshold', label: 'Swing Entry Guard',   unit: 'dps',       notes: 'FSM transition to SWING when gyro_y drops below stance threshold' },
+
+    // Amendments
+    { id: 'amendment:1',  type: 'amendment', label: 'Domain Primitives',    unit: null, notes: 'Ratification pending — names the physical quantities that govern Article I' },
+    { id: 'amendment:12', type: 'amendment', label: 'Corpus Supremacy',     unit: null, notes: 'RATIFIED — defines 4-layer corpus hierarchy; Layer 2 changes require Judicial Hearing' },
+    { id: 'amendment:13', type: 'amendment', label: 'Hybrid Exec Tiers',    unit: null, notes: 'PROPOSED — PRIVATE/DERIVED-OK/PUBLIC tier system for local vs cloud agent routing' },
+
+    // Bills
+    { id: 'bill:corpus_supremacy', type: 'bill', label: 'Corpus Supremacy Bill', unit: null, notes: 'Enacted — established 4-layer corpus and Layer 2 Hearing gate' },
+    { id: 'bill:hybrid_tier',      type: 'bill', label: 'Hybrid Tier Bill',      unit: null, notes: 'Proposed — to be debated; formalises Amendment 13 enforcement via router.py' },
+
+    // Tests
+    { id: 'test:sim_stage1',  type: 'test', label: 'Stage 1 Simulation',  unit: null, notes: 'Signal-only path (no Renode) must pass all profiles before gate closes' },
+    { id: 'test:hil_stage0',  type: 'test', label: 'Stage 0 HIL Lock',    unit: null, notes: 'Hardware-in-loop toolchain validation — single source of truth for FQBN and pins' },
+    { id: 'test:field_stage3', type: 'test', label: 'Stage 3 Field Test', unit: null, notes: 'Field data vs simulation correlation — deviation triggers hardware/mounting review' },
+    { id: 'test:router_smoke', type: 'test', label: 'Router Smoke Test',  unit: null, notes: 'python -m crucible.hybrid.router validates tier enforcement for all contracted agents' },
+
+    // Stages
+    { id: 'stage:0', type: 'stage', label: 'Stage 0 — HIL',        unit: null, notes: 'Toolchain lock: board, FQBN, pins, libs committed and frozen' },
+    { id: 'stage:1', type: 'stage', label: 'Stage 1 — Simulation', unit: null, notes: 'Signal-only simulation; Renode path optional until Stage 2' },
+    { id: 'stage:2', type: 'stage', label: 'Stage 2 — Firmware',   unit: null, notes: 'Firmware integration; Renode predictions vs dev kit measurements' },
+    { id: 'stage:3', type: 'stage', label: 'Stage 3 — Field',      unit: null, notes: 'Field data collection; all data under docs/field-test/ is PRIVATE by default' },
+    { id: 'stage:4', type: 'stage', label: 'Stage 4 — Host',       unit: null, notes: 'Host integration; hybrid execution tiers enforced for any cloud agent calls' },
+
+    // Failure modes
+    { id: 'failure:vabs',      type: 'failure_mode', label: 'VABS.F32 FPU bug',      unit: null, notes: 'ARM FPU emulator bug in Renode 1.16.1 — incorrect result on VABS.F32 with negative input' },
+    { id: 'failure:tier_leak', type: 'failure_mode', label: 'Tier Leak Risk',         unit: null, notes: 'Cloud agent receives PRIVATE corpus chunk — prevented by router.py contract enforcement' },
+  ],
+
+  links: [
+    // Signals → primitives
+    { source: 'signal:accel_z',   target: 'primitive:cadence',        relation: 'traces_to',    evidence: 'docs/governance/amendments.md#amendment-1' },
+    { source: 'signal:gyro_y',    target: 'primitive:stance',         relation: 'traces_to',    evidence: 'docs/governance/amendments.md#amendment-1' },
+    { source: 'signal:ble_rssi',  target: 'primitive:signal_quality', relation: 'traces_to',    evidence: 'docs/governance/amendments.md#amendment-1' },
+
+    // Thresholds → primitives
+    { source: 'threshold:pushoff',     target: 'primitive:cadence',        relation: 'traces_to', evidence: 'docs/governance/case_law.md#pushoff-derivation' },
+    { source: 'threshold:cadence_min', target: 'primitive:cadence',        relation: 'traces_to', evidence: 'docs/governance/case_law.md#cadence-bounds' },
+    { source: 'threshold:fsm_swing',   target: 'primitive:stance',         relation: 'traces_to', evidence: 'docs/governance/case_law.md#fsm-swing-entry' },
+    { source: 'threshold:tier_private', target: 'primitive:hybrid_privacy', relation: 'traces_to', evidence: 'docs/hybrid/corpus_classification.md' },
+    { source: 'threshold:tier_derived', target: 'primitive:hybrid_privacy', relation: 'traces_to', evidence: 'docs/hybrid/corpus_classification.md' },
+
+    // Amendments govern thresholds / primitives
+    { source: 'amendment:1',  target: 'primitive:cadence',        relation: 'governs', evidence: 'docs/governance/amendments.md#amendment-1' },
+    { source: 'amendment:1',  target: 'primitive:stance',         relation: 'governs', evidence: 'docs/governance/amendments.md#amendment-1' },
+    { source: 'amendment:12', target: 'threshold:tier_private',   relation: 'governs', evidence: 'docs/governance/amendments.md#amendment-12' },
+    { source: 'amendment:13', target: 'threshold:tier_private',   relation: 'governs', evidence: 'docs/governance/amendments.md#amendment-13' },
+    { source: 'amendment:13', target: 'threshold:tier_derived',   relation: 'governs', evidence: 'docs/governance/amendments.md#amendment-13' },
+    { source: 'amendment:13', target: 'primitive:hybrid_privacy', relation: 'governs', evidence: 'docs/governance/amendments.md#amendment-13' },
+
+    // Bills authorized by amendments
+    { source: 'bill:corpus_supremacy', target: 'amendment:12', relation: 'authorized_by', evidence: 'docs/governance/case_law.md#corpus-supremacy-bill' },
+    { source: 'bill:hybrid_tier',      target: 'amendment:13', relation: 'authorized_by', evidence: 'docs/governance/amendments.md#amendment-13' },
+
+    // Signals measured via sensors
+    { source: 'signal:accel_z',  target: 'signal:gyro_y', relation: 'measured_via', evidence: 'docs/toolchain_config.md#imu' },
+
+    // Tests close stages
+    { source: 'test:hil_stage0',  target: 'stage:0', relation: 'closes', evidence: 'docs/governance/case_law.md' },
+    { source: 'test:sim_stage1',  target: 'stage:1', relation: 'closes', evidence: 'docs/governance/case_law.md' },
+    { source: 'test:field_stage3', target: 'stage:3', relation: 'closes', evidence: 'docs/governance/case_law.md' },
+    { source: 'test:router_smoke', target: 'stage:4', relation: 'closes', evidence: 'crucible/hybrid/router.py' },
+
+    // Stage gate chain
+    { source: 'stage:0', target: 'stage:1', relation: 'traces_to', evidence: 'docs/governance/amendments.md#amendment-2' },
+    { source: 'stage:1', target: 'stage:2', relation: 'traces_to', evidence: 'docs/governance/amendments.md#amendment-2' },
+    { source: 'stage:2', target: 'stage:3', relation: 'traces_to', evidence: 'docs/governance/amendments.md#amendment-2' },
+    { source: 'stage:3', target: 'stage:4', relation: 'traces_to', evidence: 'docs/governance/amendments.md#amendment-2' },
+
+    // Failure modes
+    { source: 'failure:vabs',      target: 'threshold:pushoff',      relation: 'caught_by', evidence: 'docs/governance/case_law.md#vabs-f32-case' },
+    { source: 'failure:tier_leak', target: 'threshold:tier_private', relation: 'caught_by', evidence: 'crucible/hybrid/router.py' },
+  ]
+};
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function nodeColor(node)  { return NODE_COLOR[node.type]  || '#ffffff'; }
+function nodeSize(node)   { return NODE_SIZE[node.type]   || 4; }
+function linkColor(link)  { return LINK_COLOR[link.relation] || '#555'; }
+
+// ── Build graph ───────────────────────────────────────────────────────────────
+
+const tooltip = document.getElementById('tooltip');
+
+const Graph = ForceGraph3D({ rendererConfig: { antialias: true, alpha: true } })
+  (document.getElementById('graph'))
+  .backgroundColor('#080c14')
+  .width(window.innerWidth)
+  .height(window.innerHeight)
+
+  // Nodes
+  .nodeVal(nodeSize)
+  .nodeColor(nodeColor)
+  .nodeLabel(() => '')   // suppress default; we use custom tooltip
+  .nodeResolution(12)
+  .nodeOpacity(0.95)
+
+  // Links
+  .linkColor(linkColor)
+  .linkWidth(1.2)
+  .linkOpacity(0.55)
+  .linkDirectionalParticles(link => link.relation === 'governs' ? 4 : link.relation === 'traces_to' ? 3 : link.relation === 'caught_by' ? 5 : 2)
+  .linkDirectionalParticleWidth(link => link.relation === 'caught_by' ? 2.5 : 1.8)
+  .linkDirectionalParticleSpeed(link => link.relation === 'caught_by' ? 0.008 : 0.004)
+  .linkDirectionalParticleColor(linkColor)
+
+  // Tooltip on hover
+  .onNodeHover(node => {
+    document.body.style.cursor = node ? 'pointer' : 'default';
+    if (node) {
+      tooltip.style.display = 'block';
+      tooltip.innerHTML = `
+        <div class="tt-type">${node.type}</div>
+        <div class="tt-label">${node.label}</div>
+        ${node.unit ? `<div class="tt-unit">${node.unit}</div>` : ''}
+        ${node.notes ? `<div class="tt-notes">${node.notes}</div>` : ''}
+      `;
+    } else {
+      tooltip.style.display = 'none';
+    }
+  })
+  .onNodeClick(node => {
+    // Fly camera to clicked node
+    const dist = 60;
+    const distRatio = 1 + dist / Math.hypot(node.x, node.y, node.z);
+    Graph.cameraPosition(
+      { x: node.x * distRatio, y: node.y * distRatio, z: node.z * distRatio },
+      node,
+      1200
+    );
+  })
+
+  .graphData(GRAPH_DATA);
+
+// Follow mouse for tooltip position
+document.addEventListener('mousemove', e => {
+  tooltip.style.left = (e.clientX + 16) + 'px';
+  tooltip.style.top  = (e.clientY + 16) + 'px';
+});
+
+// Resize
+window.addEventListener('resize', () => {
+  Graph.width(window.innerWidth).height(window.innerHeight);
+});
+
+// Stats
+const stats = document.getElementById('stats');
+stats.innerHTML = `
+  nodes&nbsp;&nbsp;${GRAPH_DATA.nodes.length}<br>
+  edges&nbsp;&nbsp;${GRAPH_DATA.links.length}<br>
+  branch&nbsp;corpus-supremacy
+`;
+
+// Slow auto-rotation
+let angle = 0;
+setInterval(() => {
+  angle += 0.0015;
+  Graph.cameraPosition({
+    x: 220 * Math.sin(angle),
+    z: 220 * Math.cos(angle),
+  });
+}, 30);
+</script>
+</body>
+</html>

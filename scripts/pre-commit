@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# Crucible pre-commit hook — Article I and Corpus Supremacy (Amendment 12).
+# Install: cp scripts/pre-commit .git/hooks/pre-commit && chmod +x .git/hooks/pre-commit
+#
+# Runs the lightweight constitutional check on staged files only.
+# Blocks the commit if VIOLATIONS are found.
+# Warnings are printed but do not block.
+
+set -euo pipefail
+
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+cd "$REPO_ROOT"
+
+echo "Running Crucible constitutional pre-commit check..."
+python -m crucible.checks.runner --pre-commit
+
+# runner exits 1 on VIOLATION, 0 on clean or warnings-only.

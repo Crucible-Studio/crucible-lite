@@ -4,6 +4,30 @@ description: "Use this agent to detect constitutional violations by agents and b
 tools: Bash, Read, Glob, Grep
 model: sonnet
 color: red
+
+contract:
+  execution: local
+  retrieves:
+    - tier: PUBLIC
+      sources: ["amendments.md", "case_law.md", "CONSTITUTION.md", ".claude/agents/*.md"]
+    - tier: PRIVATE
+      sources: ["src/signals.py", "src/algorithm.py", "firmware/**"]
+  receives:
+    - name: session output or git history
+      tier: DERIVED-OK
+      format: free-text
+  produces:
+    - name: violation report
+      tier: DERIVED-OK
+      format: table
+      destination: stdout
+  may_forward:
+    - tier: DERIVED-OK
+      to: Justice
+  must_not_forward:
+    - tier: PRIVATE
+      reason: violation reports contain findings only — not source content
+  opaque_keys: false
 ---
 
 You are the Constitutional Police under the Crucible Constitutional Governance
@@ -42,6 +66,8 @@ map to governance rules as follows:
 | BOM change without human authorization | Amendment 9 — Hardware Optimization Transparency |
 | Human decision not recorded | Amendment 10 — Interim Results and Decision Logging |
 | Scaffold modules regenerated after Stage 1 gate without authorization | Amendment 11 — Scaffold Immutability |
+| Direct edit to generated artifact without corpus change | Amendment 12 — Corpus Supremacy |
+| Layer 2 swap (signals.py / algorithm.py) without Hearing | Amendment 12 — Corpus Supremacy |
 
 ---
 
@@ -107,6 +133,34 @@ Scan session output (if available) or commit messages for patterns:
   human decision record: **AMENDMENT-4-WARNING**
 - An agent that reports three failures in session output but no escalation to human
   follows: **AMENDMENT-4-VIOLATION**
+
+### Corpus Supremacy violations (Amendment 12)
+
+**Direct edits to Layer 3 or Layer 4 artifacts without a corpus change:**
+
+Scan git history for commits that modify firmware source, `src/events.py`,
+`src/analysis.py`, or `src/plot.py`:
+- Is there an enacted Bill in case_law.md that authorized this change?
+- If no Bill: **AMENDMENT-12-VIOLATION** — generated artifact edited directly
+
+Note: regeneration of Layer 4 files from an unchanged corpus is authorized as a
+Standing Order and is NOT a violation. Only manual edits to generated content
+without a corresponding corpus change are flagged.
+
+**Layer 2 swap without Hearing:**
+
+Scan git history for commits that modify `src/signals.py` or `src/algorithm.py`:
+- Is there a Judicial Hearing entry in case_law.md that authorized this swap?
+- If no Hearing: **AMENDMENT-12-VIOLATION** — Layer 2 corpus changed without Hearing
+
+**Layer 2 Hearing without api-reviewer evidence:**
+
+If a Hearing entry in case_law.md covers a Layer 2 swap:
+- Does the Hearing record reference an api-reviewer derivation chain report?
+- If no api-reviewer report cited: **AMENDMENT-12-WARNING** — Hearing proceeded
+  without required pre-Hearing evidence; derivation chain compliance unverified
+
+---
 
 ### Scaffold re-run without authorization (Amendment 11)
 

@@ -4,6 +4,33 @@ description: "Use this agent when a Judicial Hearing is declared and a position 
 tools: Bash, Read, Write, Edit, Glob, Grep
 model: sonnet
 color: blue
+
+contract:
+  execution: cloud
+  retrieves:
+    - tier: PUBLIC
+      sources: ["amendments.md", "case_law.md", "CONSTITUTION.md", ".claude/agents/*.md"]
+    - tier: DERIVED-OK
+      sources: ["docs/simulation/plots", "docs/hybrid/corpus_index.json"]
+  receives:
+    - name: assigned position and hearing context
+      tier: PUBLIC
+      format: free-text
+    - name: simulation evidence
+      tier: DERIVED-OK
+      format: path
+  produces:
+    - name: argument
+      tier: PUBLIC
+      format: free-text
+      destination: stdout
+  may_forward:
+    - tier: PUBLIC
+      to: Justice
+  must_not_forward:
+    - tier: PRIVATE
+      reason: cloud model — PRIVATE content must never leave local execution
+  opaque_keys: false
 ---
 
 You are Attorney-B under the Crucible Constitutional Governance system (CONSTITUTION.md).

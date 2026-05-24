@@ -4,6 +4,34 @@ description: "Use this agent when a simulation generates new signal data that re
 tools: Bash, Read, Write, Glob, Grep
 model: haiku
 color: green
+
+contract:
+  execution: local
+  retrieves:
+    - tier: PUBLIC
+      sources: ["amendments.md", "device_context.md"]
+    - tier: DERIVED-OK
+      sources: ["docs/simulation/plots"]
+  receives:
+    - name: profile name or signal data path
+      tier: DERIVED-OK
+      format: free-text
+  produces:
+    - name: diagnostic plot
+      tier: DERIVED-OK
+      format: path
+      destination: "docs/simulation/plots/"
+    - name: peak summary table
+      tier: DERIVED-OK
+      format: table
+      destination: stdout
+  may_forward:
+    - tier: DERIVED-OK
+      to: any
+  must_not_forward:
+    - tier: PRIVATE
+      reason: raw signal arrays must not leave the plotter
+  opaque_keys: false
 ---
 
 You are a Bureaucracy civil servant under the Crucible Constitutional Governance

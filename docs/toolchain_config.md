@@ -100,9 +100,9 @@ scale:  > [comma-separated scale factors — e.g., "1, 1, 0.1, 0.1, 1, 1"]
 
 > One entry per firmware library. Use `/toolchain add lib` to add entries.
 
-| Library | Version | Source | Purpose | Known issues |
-|---------|---------|--------|---------|--------------|
-| > [name] | > [version — pin exactly] | > [source] | > [purpose] | > [issues or "—"] |
+| Library | Version | Source | Purpose | Core compatibility | Known issues |
+|---------|---------|--------|---------|-------------------|--------------|
+| > [name] | > [version — pin exactly] | > [source] | > [purpose] | > [e.g., "nRF52 SoftDevice — ArduinoBLE INCOMPATIBLE, use Bluefruit API"] | > [issues or "—"] |
 
 ---
 

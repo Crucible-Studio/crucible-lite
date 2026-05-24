@@ -56,6 +56,8 @@ For an enacted Bill:
 - Does it change a signal name or unit? → uart-reader print template, plotter axis labels
 - Does it change the toolchain ELF path? → simulator-operator, regression-runner
 - Does it add a new blocked toolchain? → all agents that reference toolchain_config.md
+- Does it authorize a Layer 2 swap (new signals.py or algorithm.py implementation)?
+  → api-reviewer must be invoked before the Hearing; flag this in the proposal
 
 ---
 

@@ -14,7 +14,8 @@ Law Compaction**. You fire exactly once per stage gate confirmation. Your output
 
 ## Your Single Standing Order
 
-When invoked with a stage number (e.g. "Stage 3 is closed"), you:
+When invoked with a stage number (e.g. "Stage 3 is closed"), you execute these steps
+**in order** before committing. Do not skip steps — they run unconditionally.
 
 1. Read `docs/governance/case_law.md` and identify all entries tagged to the closing stage
 2. Read `docs/governance/handoff.md` for the confirmed exit criteria record
@@ -22,9 +23,44 @@ When invoked with a stage number (e.g. "Stage 3 is closed"), you:
 4. Write all cards to `docs/governance/stage_[N]_closeout.md`
 5. Mark each compacted entry in `docs/governance/case_law.md` as
    `[FROZEN — Stage N closed YYYY-MM-DD]`
-6. Commit both files with a standard closeout commit message:
-   `git add docs/governance/case_law.md docs/governance/stage_[N]_closeout.md`
-   `git commit -m "chore: close Stage [N] — compact case law, freeze precedents"`
+6. If `corpus.db` exists (at repo root), write each compacted case to the `cases` table:
+   - `type = 'closeout'`, `stage = N`, `status = 'frozen'`, `summary = <card text>`
+   - Run: `python -m crucible.db.migrate` first if schema not yet applied
+   - If DB is unavailable, skip silently — markdown files are the authoritative record
+
+**Step 6b — /session clean (Idea 4C + Mem0 integration):**
+Before committing, run `/session clean` to remove resolved threads from working memory:
+```
+from mem0 import MemoryClient
+client = MemoryClient()
+client.delete(filter={"status": "RESOLVED"})
+client.delete(filter={"status": "CLOSED"})
+```
+If Mem0 is not installed (`pip install mem0ai`), fall back to regex-removing
+`[RESOLVED]` and `[CLOSED]` tagged lines from `docs/governance/session_context.md`.
+Print: "Working memory cleaned — [N] resolved threads removed."
+
+**Step 6c — Copy session_context.md to closeout (Idea 4C):**
+Copy the cleaned `docs/governance/session_context.md` into the closeout file
+as a `## Session Working Memory at Stage [N] Close` appendix.
+Then reset `docs/governance/session_context.md` to the blank template for Stage N+1.
+
+**Step 6d — Append to notebook (Idea 4 — lite notebook):**
+Append a stage close block to `docs/notebook.md`:
+```markdown
+## [YYYY-MM-DD] — Stage [N] close
+- [one-line summary of what was decided / locked this stage]
+- [open threads inherited by next stage]
+- [anything that surprised us or should be noted for next stage]
+```
+Write factually from the case law and exit criteria — no editorializing.
+
+7. Commit with a standard closeout commit message:
+   ```
+   git add docs/governance/case_law.md docs/governance/stage_[N]_closeout.md \
+           docs/governance/session_context.md docs/notebook.md
+   git commit -m "chore: close Stage [N] — compact case law, freeze precedents, clean working memory"
+   ```
    Do NOT push. Push is a human action. Print the commit hash and stop.
 
 You do not summarise, editorialize, or interpret. You compact. The output is a lossless

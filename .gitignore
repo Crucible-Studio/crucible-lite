@@ -1,0 +1,15 @@
+crucible/checks/__pycache__/
+__pycache__/
+*.pyc
+*.pyo
+.DS_Store
+
+# RAG vector store — rebuilt on demand via `python -m crucible.rag.indexer`
+.chroma/
+
+# Structured corpus DB — gitignored except schema migrations
+# Schema lives in crucible/db/schema.sql (committed)
+corpus.db
+
+# Wiki output — generated on demand via /wiki generate
+docs/wiki/

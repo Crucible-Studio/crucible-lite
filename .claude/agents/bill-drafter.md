@@ -33,12 +33,16 @@ A Bill you produce is a proposed change — the Justice and attorneys decide its
 
 Read in this order before producing any output.
 
-1. `docs/governance/amendments.md`
+If the Chroma index exists (`.chroma/` in repo root), prefer semantic retrieval via
+`crucible.rag.query` over reading full files — it is faster and scopes to relevant
+sections. Fall back to reading full files if the index is unavailable.
+
+1. `docs/governance/amendments.md` (or `query("domain primitives amendment 1", file_filter="amendments")`)
    - Amendment 1: domain primitives (for Expected Outcome unit validation)
    - All other amendments: to identify the correct amendment grounding
-2. `docs/governance/case_law.md`
+2. `docs/governance/case_law.md` (or `query("enacted bill [change topic]", file_filter="case_law")`)
    - Check for relevant precedent (an enacted Bill for the same issue would block re-drafting)
-3. `docs/device_context.md`
+3. `docs/device_context.md` (or `query("signal inventory test results", file_filter="device_context")`)
    - Test Results and Signal Measurements: the evidence pool for the Evidence gate
    - Signal Inventory: unit and range validation
 4. `docs/toolchain_config.md`

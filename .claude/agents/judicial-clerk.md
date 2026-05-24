@@ -32,6 +32,7 @@ Read these files to confirm they exist:
 - `.claude/agents/simulator-operator.md`
 - `.claude/agents/plotter.md`
 - `.claude/agents/uart-reader.md`
+- `.claude/agents/api-reviewer.md`
 - `.claude/agents/code-reviewer.md`
 - `.claude/agents/doc-reviewer.md`
 - `.claude/agents/constitution-auditor.md`
@@ -59,8 +60,8 @@ Print `=== [FILE] FOUND ===` or `=== [FILE] MISSING — RATIFY BEFORE HEARING ==
   COURTROOM READY
   Agents confirmed: Attorney-A, Attorney-B,
     simulator-operator, plotter, uart-reader,
-    code-reviewer, doc-reviewer, constitution-auditor,
-    bill-drafter, regression-runner,
+    api-reviewer, code-reviewer, doc-reviewer,
+    constitution-auditor, bill-drafter, regression-runner,
     sw-advisor, hw-advisor,
     agent-updater, police
   Constitution confirmed: CONSTITUTION.md

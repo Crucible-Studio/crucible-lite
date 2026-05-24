@@ -7,6 +7,7 @@ from docs/toolchain_config.md before acting. This command is the only thing that
 Usage: /toolchain <subcommand> [args]
 
 Subcommands:
+  detect                  — probe USB/environment for connected boards before init
   status                  — print current toolchain config in full
   init                    — interactive setup from scratch (prompts for each section)
   add hw                  — add or update the hardware record (board, MCU, IMU)
@@ -53,18 +54,63 @@ Read `docs/toolchain_config.md` in full and print:
 
 ---
 
+### /toolchain detect
+
+Probe the environment for connected boards before running init. Run this first on any
+new project to eliminate the most common init errors (wrong FQBN, unknown variant).
+
+**Step 1 — USB board detection**
+
+Run the following in order, stopping when a match is found:
+1. `arduino-cli board list` — lists connected boards with FQBN
+2. `pio boards --installed` (fallback if arduino-cli not available)
+3. `ls /dev/tty.usbmodem* /dev/tty.usbserial* /dev/ttyACM* /dev/ttyUSB*` (last resort — lists ports only)
+
+If a board is detected:
+  - Print: "Detected: [board name] on [port] — FQBN: [fqbn]"
+  - Cross-reference against `.claude/toolchain/boards.json` board database
+  - If the board is in the database: print pre-populated defaults and known issues:
+    ```
+    Board: [name]
+    FQBN:  [fqbn]
+    Flash: [default flash method]
+    Known issues:
+      [list from board database]
+    ```
+  - Ask: "Use these defaults for /toolchain init? (yes / customize)"
+
+If no board is detected:
+  - Print: "No board detected via USB. Connect your board and re-run /toolchain detect,
+    or enter board details manually during /toolchain init."
+
+**Step 2 — Library resolution**
+
+If a sensor or library name is mentioned in the chat or in `docs/device_context.md`
+Signal Inventory, run:
+  `arduino-cli lib search "<library name>"` for each one
+  Report the latest stable version found.
+  Print: "Auto-pin suggestion: [LibraryName] v[version] (latest stable). Confirm?"
+
+---
+
 ### /toolchain init
 
 Interactive setup. Ask the human for each section in order. After each section,
 print what you recorded and ask for confirmation before continuing to the next.
+
+Suggestion: run `/toolchain detect` first — it pre-populates FQBN, flash method, and
+known issues for recognized boards, reducing manual entry.
+
 Do not guess values — every field must come from human input or be explicitly left blank.
+Exception: if `/toolchain detect` produced auto-pin library versions, those are
+pre-populated with `[AUTO-PINNED — confirm]` tags and the human confirms or overrides.
 
 Sections in order:
 1. Hardware record (board, MCU, IMU)
-2. Pin map
+2. Pin map (run conflict check automatically after entry — see /toolchain validate)
 3. Active firmware toolchain
 4. Blocked toolchains
-5. Firmware libraries
+5. Firmware libraries (auto-pin via lib resolver if library name given without version)
 6. Git repositories
 
 After all sections: run validate, then ask Justice to confirm before writing the file.
@@ -190,8 +236,16 @@ Checks:
 3. **Library version pinned** — any library with version = "latest" or blank → WARNING
 4. **Toolchain Amendment alignment** — active toolchain table in config must match the table in docs/governance/amendments.md. Mismatch → ERROR
 5. **Repo paths exist** — for local repo paths: check the path exists on disk. Missing → WARNING
-6. **Pin conflicts** — if two signals share the same nRF52840 port/pin → ERROR (e.g., P0.27 as both SCL and button)
+6. **Pin conflicts (declared)** — if two signals share the same nRF52840 port/pin → ERROR (e.g., P0.27 as both SCL and button)
 7. **Blocked toolchain without reason** — a block entry with no failure mode cited → WARNING (Amendment 7 requires evidence)
+8. **Board database conflict check** — if the declared board matches a known board in
+   `.claude/toolchain/boards.json`, cross-reference the pin map against the board's
+   known shared-function pins. For each conflict found: → WARNING with the specific
+   pin, its shared functions on this board, and which of the two functions the user
+   has declared.
+   Example: "WARNING: P0.27 declared as I2C SCL — on Seeed XIAO nRF52840 Sense,
+   P0.27 is also used by the SBD/I2C pin shared with the on-board button pull-up.
+   Confirm this does not conflict with your button wiring."
 
 Print each check as:
   [PASS]    <check name>
@@ -219,6 +273,69 @@ Print a human-readable summary of what changed since the last lock:
 - Repos added
 - Blocks added or lifted
 - Lock status changed
+
+---
+
+### Smoke Test Diagnosis Mode
+
+When a Stage 0 smoke test fails, classify the failure before counting it as a strike.
+
+**Failure classification:**
+
+| Failure type | Classification | Counts toward Amendment 4 three-strike? |
+|---|---|---|
+| Wrong FQBN / board not found | Operational (config) | NO |
+| Wrong pin number or assignment | Operational (config) | NO |
+| Library missing or wrong version | Operational (config) | NO |
+| Flash failed (port not found, permission denied) | Operational (environment) | NO |
+| UF2 `fcopyfile` error on macOS | Operational (known macOS quirk — flash succeeded) | NO |
+| Firmware flashed, device silent (no UART output) | Constitutional (algorithm/firmware) | YES |
+| Firmware flashed, wrong output (bad values) | Constitutional (algorithm) | YES |
+| Sensor returns unexpected value (WHO_AM_I wrong) | Operational unless firmware confirmed correct | Diagnose first |
+| BLE device not found in scan | Operational (config — name truncation likely) | NO |
+
+**Diagnosis trees for each Stage 0 smoke test:**
+
+**Smoke Test 1 — Counter (USB):**
+- No serial output → check port and baud rate first (operational); if port correct, firmware likely not running (constitutional)
+- Counts increment wrong → constitutional (algorithm)
+- `fcopyfile` error during UF2 → known macOS quirk; flash likely succeeded — re-check port
+
+**Smoke Test 2 — Sensor/IMU (WHO_AM_I):**
+- Returns 0x00 → likely wrong I2C address in firmware — check sensor datasheet for correct address (operational)
+- Returns 0xFF → I2C bus floated — check SDA/SCL wiring and pull-up resistors (operational)
+- Returns EIO / errno -5 → pin conflict — check if SCL pin is shared with another function (operational; see board database)
+- Returns correct ID → sensor wired correctly; proceed
+
+**Smoke Test 3 — Algorithm output (USB):**
+- Output present but value always 0 or constant → constitutional (algorithm — check FPU, signed/unsigned, integer truncation)
+- Output absent → operational (serial port issue) or constitutional (firmware crash)
+- Output present, value changes with motion → PASS
+
+**Smoke Test 4 — Wireless (BLE/WiFi):**
+- Device not found in scan → check advertised name first: run `hcitool lescan` (Linux) or `nRF Connect` app and look for any device, including truncated names. BLE advertising names are often truncated to ≤8 chars by the stack. (operational)
+- Device found but cannot connect → operational (pairing, MTU, service UUID)
+- Device connects but produces no output → constitutional (firmware not writing to characteristic)
+- UART lines fragment across packets → operational; increase BLE MTU or shorten format strings
+
+**Three-strike fast-path rule:**
+
+Operational failures (config, wiring, environment) do NOT count toward the Amendment 4
+three-strike count. Only constitutional failures (algorithm produces wrong output, firmware
+crashes) count.
+
+When a smoke test fails:
+1. Classify the failure using the diagnosis tree above
+2. If operational: fix the config/wiring issue and retry — do NOT increment the strike count
+3. If constitutional: increment the strike count and document the attempt
+4. If ambiguous: ask the human to classify before retrying
+
+Print the classification explicitly:
+  "[OPERATIONAL] Smoke Test 2 failed — I2C address mismatch. Fix pin assignment and retry.
+   Strike count unchanged."
+or:
+  "[CONSTITUTIONAL] Smoke Test 3 failed — algorithm output constant 0. Strike 1 of 3.
+   If this happens twice more, Amendment 4 escalation is required."
 
 ---
 

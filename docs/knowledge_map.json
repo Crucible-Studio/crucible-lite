@@ -1,0 +1,59 @@
+{
+  "_schema": "crucible-knowledge-map-v1",
+  "_description": "Project knowledge graph. Nodes are physical/constitutional concepts; edges are relationships. Agents read this before acting; police agent writes to it when violations are resolved. Rendered to Mermaid via /wiki generate.",
+  "_last_updated": null,
+
+  "nodes": [],
+  "edges": [],
+
+  "_node_types": [
+    "primitive",
+    "signal",
+    "threshold",
+    "failure_mode",
+    "amendment",
+    "bill",
+    "test",
+    "stage"
+  ],
+
+  "_edge_relations": [
+    "traces_to",
+    "measured_via",
+    "caught_by",
+    "authorized_by",
+    "governs",
+    "closes"
+  ],
+
+  "_node_schema": {
+    "id":    "string — slug format: 'type:label' e.g. 'primitive:cadence', 'signal:accel_z'",
+    "type":  "string — one of _node_types",
+    "label": "string — human-readable name",
+    "unit":  "string — SI unit or null",
+    "notes": "string — one sentence of context or null"
+  },
+
+  "_edge_schema": {
+    "source": "node id",
+    "target": "node id",
+    "relation": "string — one of _edge_relations",
+    "evidence": "string — file:line or case_law.md anchor or null"
+  },
+
+  "_example": {
+    "nodes": [
+      {"id": "primitive:cadence",   "type": "primitive",  "label": "Cadence",          "unit": "steps/min", "notes": "Fundamental temporal frequency of gait"},
+      {"id": "signal:accel_z",      "type": "signal",     "label": "Accel Z-axis",     "unit": "m/s²",      "notes": "IMU accelerometer Z — vertical axis projection"},
+      {"id": "threshold:pushoff",   "type": "threshold",  "label": "Push-off threshold","unit": "dps",       "notes": "30 dps derived from min push-off speed + rebound artifact"},
+      {"id": "amendment:1",         "type": "amendment",  "label": "Domain Primitives", "unit": null,        "notes": "Amendment 1 — ratified"},
+      {"id": "failure:vabs",        "type": "failure_mode","label": "VABS.F32 FPU bug", "unit": null,        "notes": "ARM FPU emulator bug in Renode 1.16.1 — BUG-013"}
+    ],
+    "edges": [
+      {"source": "signal:accel_z",    "target": "primitive:cadence",  "relation": "traces_to",    "evidence": "docs/governance/amendments.md#amendment-1"},
+      {"source": "threshold:pushoff", "target": "primitive:cadence",  "relation": "traces_to",    "evidence": "docs/governance/case_law.md#pushoff-derivation"},
+      {"source": "failure:vabs",      "target": "threshold:pushoff",  "relation": "caught_by",    "evidence": "docs/governance/case_law.md#vabs-f32-case"},
+      {"source": "amendment:1",       "target": "primitive:cadence",  "relation": "governs",      "evidence": "docs/governance/amendments.md#amendment-1"}
+    ]
+  }
+}

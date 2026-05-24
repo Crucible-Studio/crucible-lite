@@ -1,0 +1,112 @@
+{
+  "boards": [
+    {
+      "name": "Seeed XIAO nRF52840 Sense",
+      "part_number": "102010448",
+      "fqbn": "Seeeduino:nrf52:xiaonRF52840Sense",
+      "flash_method": "UF2 drag-drop (double-tap reset to enter bootloader)",
+      "ble_name_max_chars": 8,
+      "ble_mtu_default": 20,
+      "softdevice": "S140 v7.3.0",
+      "uf2_quirks": [
+        "macOS fcopyfile error during UF2 drag is normal — flash succeeds; verify with Smoke Test 1",
+        "SoftDevice UF2 region starts at 0x26000 — do not flash raw .bin at offset 0x0000"
+      ],
+      "known_pin_conflicts": [
+        {
+          "pin": "P0.27",
+          "functions": ["I2C SCL (Wire)", "SBD/I2C shared with on-board sensor"],
+          "warning": "P0.27 is shared between I2C SCL and the on-board button/sensor pull-up. If WHO_AM_I returns EIO, check whether a session button or pull-up is fighting the SCL line."
+        },
+        {
+          "pin": "P0.09",
+          "functions": ["NFC antenna pin 1"],
+          "warning": "P0.09 is reserved for NFC by default on nRF52840. Using it as GPIO requires NFC disabled in the SoftDevice config."
+        },
+        {
+          "pin": "P0.10",
+          "functions": ["NFC antenna pin 2"],
+          "warning": "P0.10 is reserved for NFC by default on nRF52840. Using it as GPIO requires NFC disabled in the SoftDevice config."
+        },
+        {
+          "pin": "P0.21",
+          "functions": ["RESET"],
+          "warning": "P0.21 is the hardware reset pin. Do not assign to GPIO unless RESET is disabled via UICR."
+        }
+      ],
+      "default_libraries": [
+        { "name": "Seeed Arduino LSM6DS3", "purpose": "LSM6DS3TR-C IMU driver" },
+        { "name": "ArduinoBLE", "purpose": "BLE NUS/custom service" }
+      ]
+    },
+    {
+      "name": "Seeed XIAO nRF52840",
+      "part_number": "102010448-base",
+      "fqbn": "Seeeduino:nrf52:xiaonRF52840",
+      "flash_method": "UF2 drag-drop (double-tap reset to enter bootloader)",
+      "ble_name_max_chars": 8,
+      "ble_mtu_default": 20,
+      "uf2_quirks": [
+        "macOS fcopyfile error during UF2 drag is normal — flash succeeds"
+      ],
+      "known_pin_conflicts": [
+        { "pin": "P0.09", "functions": ["NFC antenna pin 1"], "warning": "NFC pin — requires explicit disable to use as GPIO." },
+        { "pin": "P0.10", "functions": ["NFC antenna pin 2"], "warning": "NFC pin — requires explicit disable to use as GPIO." },
+        { "pin": "P0.21", "functions": ["RESET"], "warning": "Hardware reset — do not use as GPIO without UICR change." }
+      ],
+      "default_libraries": [
+        { "name": "ArduinoBLE", "purpose": "BLE NUS/custom service" }
+      ]
+    },
+    {
+      "name": "Arduino Nano 33 BLE Sense",
+      "part_number": "ABX00031",
+      "fqbn": "arduino:mbed_nano:nano33ble",
+      "flash_method": "USB DFU (double-tap reset)",
+      "ble_name_max_chars": 10,
+      "ble_mtu_default": 23,
+      "uf2_quirks": [],
+      "known_pin_conflicts": [
+        {
+          "pin": "P0.29",
+          "functions": ["A0", "shared with on-board microphone"],
+          "warning": "A0 is shared with the on-board PDM microphone power on some revisions."
+        }
+      ],
+      "default_libraries": [
+        { "name": "Arduino_LSM9DS1", "purpose": "9-DOF IMU" },
+        { "name": "ArduinoBLE", "purpose": "BLE" }
+      ]
+    },
+    {
+      "name": "Nordic nRF52840 DK",
+      "part_number": "PCA10056",
+      "fqbn": "sandeepmistry:nRF5:Generic_nRF52840",
+      "flash_method": "J-Link SWD (nrfjprog or openocd)",
+      "ble_name_max_chars": 20,
+      "ble_mtu_default": 247,
+      "uf2_quirks": ["No UF2 bootloader — requires J-Link or SWD programmer"],
+      "known_pin_conflicts": [
+        { "pin": "P0.09", "functions": ["NFC"], "warning": "NFC pin." },
+        { "pin": "P0.10", "functions": ["NFC"], "warning": "NFC pin." }
+      ],
+      "default_libraries": []
+    },
+    {
+      "name": "Espressif ESP32-C3",
+      "part_number": "ESP32-C3-DevKitM-1",
+      "fqbn": "esp32:esp32:esp32c3",
+      "flash_method": "USB CDC (esptool.py or arduino-cli upload)",
+      "ble_name_max_chars": 25,
+      "ble_mtu_default": 23,
+      "uf2_quirks": [],
+      "known_pin_conflicts": [
+        { "pin": "GPIO18", "functions": ["USB D-"], "warning": "GPIO18/19 are USB D-/D+ — do not use as general GPIO if USB CDC is active." },
+        { "pin": "GPIO19", "functions": ["USB D+"], "warning": "GPIO18/19 are USB D-/D+ — do not use as general GPIO if USB CDC is active." }
+      ],
+      "default_libraries": [
+        { "name": "ESP32 BLE Arduino", "purpose": "BLE" }
+      ]
+    }
+  ]
+}
