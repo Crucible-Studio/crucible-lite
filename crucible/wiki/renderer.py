@@ -268,16 +268,171 @@ def generate(page: Optional[str] = None, redact: bool = True) -> None:
         print(f'  [OK] docs/wiki/{filename}')
 
 
+# ─── CLI additions (Idea 5 / Error 16) ────────────────────────────────────────
+
+def _summary() -> str:
+    """ASCII corpus table — token-efficient alternative to full police check.
+
+    ~200 tokens. Used by /wiki status and /session status (police token cost fix).
+    """
+    amendments = _amendments_from_db() or _amendments_from_markdown()
+    root = _repo_root()
+
+    # Parse hearings from MANIFEST.md
+    hearings = []
+    manifest = root / 'docs' / 'governance' / 'hearings' / 'MANIFEST.md'
+    if manifest.exists():
+        for line in manifest.read_text().splitlines():
+            if not line.startswith('|') or line.startswith('| ID') or line.startswith('|---'):
+                continue
+            cols = [c.strip() for c in line.strip('|').split('|')]
+            if len(cols) >= 7:
+                hearings.append({
+                    'id': cols[0], 'name': cols[1], 'date': cols[2],
+                    'has_a': cols[4].upper() == 'TRUE',
+                    'has_b': cols[5].upper() == 'TRUE',
+                    'has_j': cols[6].upper() == 'TRUE',
+                })
+
+    # Build ASCII table
+    lines = [
+        '┌─── CORPUS SUMMARY ─────────────────────────────────────────────────────┐',
+        '│ AMENDMENTS                                                              │',
+        '├─────┬──────────────────────────────────────────┬────────────────────────┤',
+        '│ #   │ Title                                    │ Status                 │',
+        '├─────┼──────────────────────────────────────────┼────────────────────────┤',
+    ]
+    for a in amendments:
+        num = str(a['number']).ljust(3)
+        title = a['title'][:40].ljust(40)
+        status = a.get('status', 'PROPOSED')[:22].ljust(22)
+        lines.append(f'│ {num} │ {title} │ {status} │')
+    lines.append('├─────┴──────────────────────────────────────────┴────────────────────────┤')
+    lines.append('│ HEARINGS                                                                │')
+    lines.append('├────────┬────────────────────────────────────┬──────┬───────────────────┤')
+    lines.append('│ ID     │ Name                               │ Date │ A / B / J         │')
+    lines.append('├────────┼────────────────────────────────────┼──────┼───────────────────┤')
+    if hearings:
+        for h in hearings:
+            hid = h['id'][:6].ljust(6)
+            name = h['name'][:34].ljust(34)
+            date = h['date'][:6].ljust(6) if h['date'] else '      '
+            flags = f"{'✓' if h['has_a'] else '✗'} / {'✓' if h['has_b'] else '✗'} / {'✓' if h['has_j'] else '✗'}"
+            lines.append(f'│ {hid} │ {name} │ {date} │ {flags.ljust(17)} │')
+    else:
+        lines.append('│ (no hearings on record)                                                 │')
+    lines.append('└────────────────────────────────────────────────────────────────────────────┘')
+    return '\n'.join(lines)
+
+
+def _wiki_primitive(name: str) -> str:
+    """Print all corpus references to a domain primitive inline."""
+    root = _repo_root()
+    results = [f'## Corpus references: {name}\n']
+
+    # Amendments
+    amend_text = _read_corpus('docs/governance/amendments.md')
+    if name.lower() in amend_text.lower():
+        results.append('**Amendment references:**')
+        for i, line in enumerate(amend_text.splitlines(), 1):
+            if name.lower() in line.lower():
+                results.append(f'  Line {i}: {line.strip()}')
+        results.append('')
+
+    # Hearings
+    hearings_dir = root / 'docs' / 'governance' / 'hearings'
+    if hearings_dir.exists():
+        for hf in sorted(hearings_dir.glob('H-*.md')):
+            text = hf.read_text()
+            if name.lower() in text.lower():
+                results.append(f'**Hearing {hf.stem}:** references {name}')
+
+    # src/ Traces-to annotations
+    src_dir = root / 'src'
+    if src_dir.exists():
+        for py in src_dir.glob('*.py'):
+            text = py.read_text()
+            for i, line in enumerate(text.splitlines(), 1):
+                if 'traces to' in line.lower() and name.lower() in line.lower():
+                    results.append(f'**{py.name}:{i}:** {line.strip()}')
+
+    return '\n'.join(results) if len(results) > 1 else f'No corpus references found for: {name}'
+
+
+def _wiki_hearing(hearing_id: str) -> str:
+    """Print hearing summary + linked primitives + case law entry."""
+    root = _repo_root()
+    hearings_dir = root / 'docs' / 'governance' / 'hearings'
+
+    # Find the hearing file
+    hearing_file = None
+    if hearings_dir.exists():
+        matches = list(hearings_dir.glob(f'{hearing_id}*.md'))
+        if matches:
+            hearing_file = matches[0]
+
+    if not hearing_file or not hearing_file.exists():
+        return f'Hearing {hearing_id} not found in docs/governance/hearings/'
+
+    text = hearing_file.read_text()
+    has_a = bool(re.search(r'^##\s+Attorney[-\s]A\s+(argued|position)', text, re.IGNORECASE | re.MULTILINE))
+    has_b = bool(re.search(r'^##\s+Attorney[-\s]B\s+(argued|position)', text, re.IGNORECASE | re.MULTILINE))
+    has_j = bool(re.search(r'^##\s+Justice\s+(ruled|ruling)', text, re.IGNORECASE | re.MULTILINE))
+
+    complete = '✓ COMPLETE' if (has_a and has_b and has_j) else '✗ INCOMPLETE'
+    sections = f"A={'✓' if has_a else '✗'}  B={'✓' if has_b else '✗'}  J={'✓' if has_j else '✗'}"
+
+    primitives_found = re.findall(r'\b[A-Z][a-z]+ [A-Z][a-z]+\b', text)
+
+    lines = [
+        f'## {hearing_id} — {hearing_file.stem}',
+        f'Status: {complete}  ({sections})',
+        '',
+    ]
+
+    # Extract ruling if present
+    ruling_m = re.search(r'^##\s+Justice\s+rul\w+\s*\n+(.*?)(?=\n##|\Z)', text, re.IGNORECASE | re.MULTILINE | re.DOTALL)
+    if ruling_m:
+        ruling = ruling_m.group(1).strip()[:400]
+        lines.append(f'**Ruling:**\n{ruling}')
+        lines.append('')
+
+    if primitives_found:
+        lines.append(f'**Primitives referenced:** {", ".join(set(primitives_found[:5]))}')
+
+    return '\n'.join(lines)
+
+
 def main() -> int:
     import argparse
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(description='Crucible wiki renderer and corpus query tool')
     parser.add_argument('--page', default=None,
                         choices=list(PAGES.keys()),
-                        help='Generate a single page')
+                        help='Generate a single wiki page')
     parser.add_argument('--no-redact', action='store_true',
                         help='Write raw corpus values (internal use only)')
+    # Error 16 / Idea 5: corpus query flags
+    parser.add_argument('--summary', action='store_true',
+                        help='Print ASCII corpus summary table (~200 tokens). Use for /wiki status.')
+    parser.add_argument('--wiki-primitive', metavar='NAME',
+                        help='Print all corpus references to a domain primitive inline.')
+    parser.add_argument('--wiki-hearing', metavar='H-NNN',
+                        help='Print hearing summary + linked primitives + ruling.')
     args = parser.parse_args()
-    print(f'Generating wiki → docs/wiki/')
+
+    if args.summary:
+        print(_summary())
+        return 0
+
+    if args.wiki_primitive:
+        print(_wiki_primitive(args.wiki_primitive))
+        return 0
+
+    if args.wiki_hearing:
+        print(_wiki_hearing(args.wiki_hearing))
+        return 0
+
+    print('Generating wiki → docs/wiki/')
     generate(args.page, redact=not args.no_redact)
     return 0
 

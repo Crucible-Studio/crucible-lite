@@ -29,6 +29,29 @@ Updated after: every field test session, every BOM revision, every schematic cha
 
 ---
 
+## Operating Envelope
+
+> Fill in after /spec collect Q6–Q8.
+
+- **Normal conditions:** [temperature, humidity, vibration, mounting position, use duration]
+- **Worst-case conditions:** [extremes of intended use the device must still handle]
+- **Out-of-scope conditions:** [conditions explicitly NOT designed for — what voids the warranty]
+
+---
+
+## System Constraints
+
+> Error 8 — Written by /spec collect Q9–Q11. Read by hw-advisor before any BOM recommendation.
+
+| Constraint | Value | Implication |
+|------------|-------|-------------|
+| Battery    | [mAh] | Max avg current: [mA] |
+| Form factor | [dimensions / weight] | Rules out: [list hardware options] |
+| Field interface | [BLE only / USB+BLE / ...] | Mandatory smoke tests: [list] |
+| System dependencies | [host app / cloud / other device] | Integration scope |
+
+---
+
 ## Bill of Materials (BOM)
 
 > Component-level record. Every component that touches a domain primitive must be here.

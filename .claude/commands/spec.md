@@ -30,6 +30,15 @@ This command exists to generate that precision before a single line of firmware 
 
 ## Step 1 — Project target interview
 
+**Listening rule (Error 5 — applies to all interview steps):**
+Do not propose, write, or confirm anything while the human is mid-explanation.
+Signals that a statement is incomplete:
+  - "also", "and also", "but also", "as well as" — compound requirements
+  - "both X and Y" — dual confirmation required
+  - "I mean..." or "actually..." — human is revising
+When in doubt, ask "Is there anything else to add before I write this?"
+before taking any action.
+
 Ask the following questions in order. Wait for a full answer before asking the next.
 Do not ask more than one question at a time.
 
@@ -91,6 +100,25 @@ For each signal source, ask:
 
 ## Step 3 — Domain primitive extraction
 
+**Listening rule (applies here too — see Step 1 header).**
+
+**Error 2 — Direct-input mode branch:**
+Before any derivation logic, ask:
+```
+"Do you already know your domain primitives, or do you want me to derive
+them from the signal inventory?"
+
+→ "I know them": ask the engineer to state each primitive (name, unit,
+  one-line description, sensor that provides evidence). Validate against
+  Article I rules. Do NOT propose new primitives.
+→ "Derive them": continue with the extraction logic below.
+```
+
+Also: when presenting candidates in derivation mode, label each explicitly as:
+- **Primitive** — what the device ultimately measures
+- **Signal** — what the sensor provides as evidence (must NOT be listed as a primitive
+  unless a derivation step is shown)
+
 After the signal inventory, derive the domain primitives.
 
 Rules for primitive extraction:
@@ -118,6 +146,16 @@ Do these correctly name what the device ultimately measures or controls?
 If no, tell me what to change.
 ```
 
+**Error 1 — Circular derivation check (runs before human confirmation):**
+For each proposed primitive, ask — can it be expressed as a formula using any other
+proposed primitive in the list?
+If yes: it is a derived metric, not a primitive. Flag it and ask the human to either:
+  (a) replace it with the underlying measurable quantity, or
+  (b) explicitly document it as a derived metric in device_context.md
+
+Negative example: Step Length is NOT a primitive if Cadence is already listed
+— Step Length = Speed / Cadence × 2 passes through Cadence.
+
 Do not proceed to Step 4 until the human confirms the primitives.
 
 ---
@@ -134,6 +172,31 @@ Ask:
 
 **Q8 — Out-of-scope conditions**
 (Conditions the device is explicitly NOT designed to handle — what would void the warranty)
+
+**Error 8 — System constraints (Q9–Q11):**
+
+**Q9 — Power budget**
+  Battery capacity (mAh)? Expected runtime (hours/days)?
+  → derive max average current budget (mAh ÷ hours = mA avg)
+  → record in docs/device_context.md ## System Constraints
+
+**Q10 — Form factor**
+  Size and weight limits? Mounting method? Enclosure?
+  → record constraints that rule out hardware options
+
+**Q11 — Interface budget**
+  What physical interfaces does the device expose in field use?
+  (USB debug only in lab? BLE only in field? Both always available?)
+  Which interfaces are required for the pass/fail threshold to be measurable?
+  → record in docs/toolchain_config.md (determines which smoke tests are mandatory)
+
+**Error 10 — Shared toolchain question (Q12):**
+
+**Q12 — Shared toolchain configs**
+  Does your team have a shared drive, internal package registry, or a prior
+  project on this board with pinned library versions I should reference?
+  If yes: use those; record source in docs/toolchain_config.md.
+  If no: proceed with public registry, pin versions immediately.
 
 ---
 
@@ -167,6 +230,20 @@ with their consequences.]
 - Normal: [Q6 answer]
 - Worst-case: [Q7 answer]
 - Out-of-scope: [Q8 answer]
+```
+
+### System Constraints block (Error 8)
+Write a System Constraints section to `docs/device_context.md` after ## Operating Envelope:
+
+```markdown
+## System Constraints
+
+| Constraint | Value | Implication |
+|------------|-------|-------------|
+| Battery    | [mAh] | Max avg current: [mA] |
+| Form factor | [dimensions / weight] | Rules out: [list] |
+| Field interface | [BLE only / USB+BLE / ...] | Mandatory smoke tests: [list] |
+| System dependencies | [host app / cloud / other device] | Integration scope |
 ```
 
 ### Signal Inventory block

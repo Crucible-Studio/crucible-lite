@@ -29,6 +29,23 @@ Invoke the judicial-clerk agent immediately. It will:
 
 Do not proceed past Step 1 until judicial-clerk prints COURTROOM READY.
 
+### Step 1b — Amendment 12 context interview (Error 11 — runs when Amendment 12 triggers)
+
+Before creating the H-NNN file, ask the four framing questions:
+  1. What specifically is changing in signals.py or algorithm.py?
+     (function name, parameter name, threshold value — old → new)
+  2. What physical evidence prompted this change?
+     (signal plot, field measurement, simulation result — cite a file in docs/evidence/)
+  3. What is the risk of making this change?
+     (what could go wrong physically — cite domain primitives)
+  4. What is the risk of NOT making this change?
+     (what failure mode persists — cite pass/fail threshold from device_context.md)
+
+Use answers to pre-fill Attorney-A and Attorney-B argument stubs in the H-NNN file.
+Present the pre-filled draft to the human:
+"Is this an accurate framing of the debate? Confirm or revise before I open the hearing."
+Only after confirmation: write the H-NNN file and proceed to Step 2.
+
 ### Step 2 — Print hearing declaration
 
 ```
@@ -106,6 +123,16 @@ start until the ruling is recorded.
 After the ruling is recorded:
 - If the ruling enacts a Bill that changes agent scope: invoke agent-updater with the Bill name.
 - The Justice reviews and applies any proposed agent edits before implementation begins.
+
+**Error 12 — Clerk maintains MANIFEST.md after every hearing:**
+After recording to case_law.md, invoke judicial-clerk to:
+  1. Add row to `docs/governance/hearings/MANIFEST.md`:
+     `| H-[NNN] | [hearing name] | [date] | [files] | TRUE | TRUE | TRUE |`
+     (Has-A / Has-B / Has-J = TRUE only once all three sections are present)
+  2. Confirm all three sections exist in the H-NNN file before setting Has-J = TRUE.
+  3. Verify MANIFEST.md row is consistent with the hearing file content.
+A Hearing entry missing any section is an informal ruling and does not satisfy
+Amendment 12. The pre-commit Corpus check enforces this.
 
 Standard case law entry format:
 ```

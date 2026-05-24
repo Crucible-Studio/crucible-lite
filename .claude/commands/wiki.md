@@ -83,6 +83,51 @@ python -m crucible.db.migrate --seed
 
 ---
 
+### `/wiki build` (alias for `/wiki generate`)
+
+Alias: `build` → runs `python -m crucible.wiki.renderer` with default flags.
+Produces `docs/wiki/` with `index.md`, per-primitive pages, per-hearing pages, and `constants.md`.
+
+---
+
+### `/wiki primitive <name>`
+
+Print all corpus references to a domain primitive inline — no build required.
+
+```
+python -m crucible.corpus.graph --wiki-primitive "<name>"
+```
+
+Output: amendment citation, all hearing references, all `Traces to:` annotations in src/.
+
+---
+
+### `/wiki hearing <H-NNN>`
+
+Print hearing summary + linked primitives + case law entry.
+
+```
+python -m crucible.corpus.graph --wiki-hearing H-NNN
+```
+
+Output: hearing completion status, positions A and B, ruling summary, linked primitives.
+
+---
+
+### `/wiki status`
+
+Print amendment + hearing index as ASCII table. Token-efficient alternative to running
+the full police agent for session orientation (~200 tokens vs 2000–5000).
+
+```
+python -m crucible.corpus.graph --summary
+```
+
+Use `/wiki status` in place of `/session status` police check when you only need
+corpus orientation, not a full constitutional audit.
+
+---
+
 ## Redaction tags
 
 Tag sensitive values in corpus source files for automatic stripping from wiki output:

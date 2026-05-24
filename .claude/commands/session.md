@@ -33,6 +33,34 @@ Article II irreversibility does not apply to Stage 0 — counter flashing is tri
 
 ## Session Initialisation (always runs first)
 
+**Step 0 — Resume check (Error 23 — runs before Step 0a):**
+Check for `docs/governance/session_checkpoint.md`.
+If it exists and `status: IN_PROGRESS` or `status: PAUSED`:
+```
+  Session checkpoint found:
+    Stage [N], Step [step-name] — IN PROGRESS
+    Last action: [last_action]
+    Next action: [next_action]
+    Open threads: [open_threads list]
+```
+Ask: "Resume from checkpoint? [yes / no — start fresh]"
+  If yes: skip Steps 0a–0e and jump directly to next_action.
+  If no: proceed normally (checkpoint will be overwritten).
+If not found or `status: COMPLETE`: proceed normally.
+
+Write checkpoint to `docs/governance/session_checkpoint.md` after:
+- Each smoke test gate (0.1, 0.2, 0.3, 0.4)
+- Stage 1 pre-flight completion
+- Each Stage 1/2/3/4 named step
+
+**Re-anchor (runs at every named breakpoint — Error 25):**
+```
+Re-read: docs/governance/amendments/amendment_01_domain_primitives.md
+         (or docs/governance/amendments.md if fragmented dir absent)
+Re-read: docs/governance/session_checkpoint.md (if exists)
+Write current state to: docs/governance/session_context.md
+```
+
 **Step 0a — Spec check:**
 Read `docs/device_context.md`. Check Device Purpose and Signal Inventory sections.
 
@@ -97,9 +125,32 @@ a "⚠ Warnings" section. Session may proceed but warnings must be acknowledged.
 
 If police reports CLEAN: note "Police check: clean" in the session header.
 
-**Step 0e — Package check:**
-Invoke `package-manager` to verify required Python packages.
-Do not proceed until package-manager reports clean.
+**Step 0e — Environment pre-check (Errors 6, 9, 10 — expanded from "Package check"):**
+
+  **Part A — Board MCP activation:**
+    Read docs/toolchain_config.md ## MCP Server.
+    If board MCP URL present:
+      Query MCP for: smoke test starter sketches + expected output values.
+      Use MCP-provided sketches and expected values for Smoke Tests 1–4.
+    If URL missing:
+      Print: "Board MCP not configured — using generic smoke test templates."
+
+  **Part B — Library / core compatibility:**
+    For each library in docs/toolchain_config.md ## Library Manifest:
+      Verify it is compatible with the FQBN core (not just installable).
+      Known incompatibility: ArduinoBLE (NINA stack) is NOT compatible with
+      nRF52 SoftDevice cores — use Bluefruit/Adafruit nRF52 SDK API instead.
+      Flag any incompatibility before writing any sketch.
+
+  **Part C — Local environment scan (Q12 from /spec):**
+    Run: `arduino-cli core list` (or `pio platform list`) — is FQBN core installed?
+    Run: `arduino-cli lib list` — which target libraries are already installed?
+    Ask: "Does your team have a shared drive with pinned library versions?"
+    If yes: use those; record in toolchain_config.md.
+
+  **Part D — Python packages (existing behaviour — preserved):**
+    Invoke `package-manager` to verify required Python packages.
+    Do not proceed until package-manager reports clean.
 
 Print session header:
 ```
@@ -218,15 +269,27 @@ Failure modes:
 
 [GATE 0.2] Pass → continue.
 
-### Smoke Test 3 — Algorithm over USB
+### Smoke Test 3 — Output Format Stub (Error 7)
 
-Flash full algorithm stack (sensor → algorithm → USB serial output).
-Expected: algorithm-specific output within seconds of applying stimulus.
+Flash a stub firmware that emits **hardcoded** UART events in the format defined
+in docs/toolchain_config.md ## Firmware UART Format.
+Expected: all event fields appear in correct format, no garbled output, no reset.
+Pass criterion: output parseable by the host tool / src/analysis.py.
+
+**Note:** This test does NOT validate algorithm correctness — that is Stage 1.
+It only confirms the output pipeline (UART → host parser) is functional.
+
+Example hardcoded output (replace with your firmware UART format):
+```
+STEP,1000,1.02,45.3
+STANCE,1100,520,0
+SESSION_END
+```
 
 Failure modes:
-- No output: input not reaching algorithm
-- Always same value: sensor sampling not updating
-- Correct output but "zero-when-should-be-nonzero": test explicitly under non-zero input conditions
+- No output: UART not initialised or wrong baud rate
+- Garbled output: format mismatch — check pattern in toolchain_config.md
+- Parser rejects output: update src/analysis.py event regex
 
 [GATE 0.3] Pass → continue.
 
@@ -255,6 +318,38 @@ Failure modes:
 **Purpose:** Validate algorithm on a physics model of your device domain.
 Simulation can also accept field measurement data as input (field data replay).
 **Entry condition:** Stage 0 closed.
+
+### Stage 1 pre-entry — Python environment scan (Error 19)
+
+Before the scaffold check, run:
+```
+pip list --format=json   (or pip freeze)
+```
+Store available package names in session context.
+Before writing any `src/` file: check all imports against available packages.
+Flag any import not in the list and ask the human before writing.
+
+### Stage 1 pre-flight (Error 24 — runs before every full simulation)
+
+Before running `/regression` or any full simulation profile:
+```
+1. python -m py_compile src/signals.py src/algorithm.py
+   → non-zero exit: stop, show error, do not run simulation
+2. python -c "from src.signals import generate; from src.algorithm import run; \
+              r = run(generate('walk', n_steps=1)); print('pre-flight OK:', r)"
+   → import error or runtime error: stop, show error
+```
+Only if both pass: proceed to full simulation profile.
+
+### Plot stop rule (Error 20 — applies after any plot-generation step)
+
+After generating any diagnostic plot or signal visualisation:
+```
+Print: plot path + one-line summary of what the plot should show.
+STOP. Do not read, interpret, or draw conclusions from the plot.
+Wait for human to confirm "plot looks correct" or "proceed" before continuing.
+Ask explicitly if no confirmation received: "Does the plot look as expected?"
+```
 
 ### Scaffold check (first run of Stage 1 only)
 
@@ -349,6 +444,16 @@ Run `/plot-profile` for signal diagnostic plots after any algorithm parameter ch
 **Purpose:** Run the validated algorithm on real hardware via USB serial.
 Cross-validate that the dev kit port matches simulation predictions.
 **Entry condition:** Stage 1 closed.
+
+### Stage 2 pre-flight (Error 24 — runs before every flash)
+
+Before flashing firmware:
+```
+arduino-cli compile --fqbn [FQBN] firmware/
+(or: pio run --target compiledb)
+→ compile error: stop, show error, do not flash
+```
+Only if compile succeeds: proceed to flash.
 
 ### Pipeline
 
@@ -464,6 +569,35 @@ so `/regression` and `regression-runner` can discover and run it.
 **[JUSTICE GATE S4 — FINAL]** → before closing:
 1. Invoke `police` for a full audit — this is the final constitutional record review.
 2. Invoke `stage-compactor` to close Stage 4.
+
+---
+
+## Session Subcommands (Errors 23, 25)
+
+### /session pause
+Writes checkpoint with `status: PAUSED` to `docs/governance/session_checkpoint.md`.
+Prints `next_action` so the session can be resumed cleanly.
+
+### /session refresh (Error 25)
+Re-reads:
+- `docs/governance/amendments/amendment_01_domain_primitives.md` (Amendment 01)
+- `docs/governance/session_checkpoint.md` (if exists)
+- `docs/governance/session_context.md`
+
+Prints: corpus graph summary (`python -m crucible.corpus.graph --summary`)
+Use this when session quality degrades or after long pauses.
+
+### /session clean (Error 25 — memory cleaning)
+Reads `docs/governance/session_context.md`.
+Removes any "Open threads" entries marked `[RESOLVED]` or `[CLOSED]`.
+Updates "Current position" to reflect present step.
+Re-writes the file cleanly (no stale entries, no duplicate primitives).
+Prints: "Working memory cleaned — [N] resolved threads removed."
+
+**Automatic trigger:** At every stage gate close (Justice Gate), before stage-compactor
+runs, `/session clean` executes automatically. The cleaned `session_context.md` is
+copied into `docs/governance/stage_[N]_closeout.md` as the structured handoff record,
+then reset to a fresh template for the next stage.
 
 ---
 

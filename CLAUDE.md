@@ -206,6 +206,18 @@ Run `/session status`. It reads the constitutional record and prints:
 If you are resuming mid-stage, read `docs/governance/case_law.md` to see what
 was already decided. Do not re-debate closed cases.
 
+**Error 25 — Session working memory:**
+Run `/session refresh` if quality degrades mid-session (re-reads Amendment 01,
+checkpoint, working memory). The agent maintains `docs/governance/session_context.md`
+as a short working-memory file updated at every named breakpoint — Amendment 1
+primitives, locked constants, current step, open threads. Context compression
+cannot erase it.
+
+`/session clean` removes resolved threads from `session_context.md` using Mem0
+(`pip install mem0ai`) for selective forgetting. Threads tagged `[RESOLVED]` or
+`[CLOSED]` are deleted via `client.delete(filter={"status": "RESOLVED"})`.
+Run automatically at every stage gate close before stage-compactor fires.
+
 ## How to start a new project (forking this repo)
 
 1. `/spec collect` — interview about device purpose, signal inventory, domain primitives
@@ -226,10 +238,31 @@ have no basis for their findings.
 
 ## The one thing you must not do
 
-Do not set a threshold, cutoff, or parameter in firmware source without citing a
-domain primitive in an inline comment. Not as a style rule — as a constitutional
-requirement. A constant without a primitive citation is an Article I violation.
+Do not set a threshold, cutoff, or parameter in firmware source or in
+`src/signals.py` / `src/algorithm.py` without citing a domain primitive in an
+inline comment. Not as a style rule — as a constitutional requirement.
+
+**Error 15 — Citation must appear on the same line as the constant** — not only
+on the preceding line. A preceding-line comment is only counted if the context
+also contains a domain primitive name from Amendment 1. For toolchain constants
+(USB CDC, BLE GAP, etc.), use an inline comment:
+```
+Bluefruit.Advertising.setInterval(32, 244); // Traces to: BLE GAP — toolchain constant
+```
+
+The citation must name an actual Amendment 1 primitive. A comment like
+`# Traces to: sensor mismatch (empirical)` passes the keyword check but fails
+the primitive-name check in `article1_check.py` and `article_i.py`. The only
+comment that passes is one that names a primitive from Amendment 1 — e.g.
+`# Traces to: Floor Acceleration (Amendment 1 primitive 1)`.
+
+A constant without a primitive citation is an Article I violation.
 The code-reviewer will flag it. The police will record it.
 
 If you do not know which primitive a constant traces to, that is the signal to
 stop and ask the human — not to guess and proceed.
+
+**Also: do not write to `src/signals.py` or `src/algorithm.py` without a
+Judicial Hearing on record** (Amendment 12 — Corpus Supremacy). The
+`bash_write_guard.py` hook will block Bash-path writes. The pre-commit hook will
+block git commits. The only way through is a completed Hearing.
