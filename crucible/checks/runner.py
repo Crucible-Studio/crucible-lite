@@ -11,6 +11,7 @@ Exits 0 if no VIOLATION found. Exits 1 if any VIOLATION found.
 """
 
 import argparse
+import subprocess
 import sys
 from typing import Optional
 from pathlib import Path
@@ -18,6 +19,45 @@ from pathlib import Path
 from .article_i import run as check_article_i
 from .corpus import run as check_corpus
 from .stage_gate import run as check_stage_gate
+
+
+def _resolve_repo_root() -> Path:
+    """Resolve repo root from working directory, not from the installed package path.
+
+    Path(__file__).parents[3] breaks when crucible is pip-installed into site-packages
+    because the walk lands in the Python prefix, not the project root.
+    git rev-parse always resolves relative to the CWD where the command is invoked.
+    """
+    result = subprocess.run(
+        ['git', 'rev-parse', '--show-toplevel'],
+        capture_output=True, text=True, cwd=Path.cwd()
+    )
+    if result.returncode == 0:
+        return Path(result.stdout.strip())
+    # Fallback: works when running from a monolithic repo checkout (non-pip path)
+    return Path(__file__).resolve().parents[3]
+
+
+def _check_hooks_path() -> list[dict]:
+    """Warn when core.hooksPath points to a directory that does not exist."""
+    result = subprocess.run(
+        ['git', 'config', 'core.hooksPath'],
+        capture_output=True, text=True
+    )
+    configured = result.stdout.strip()
+    if configured:
+        hooks_dir = Path.cwd() / configured
+        if not hooks_dir.exists():
+            return [{
+                'severity': 'WARNING',
+                'file': '.git/config',
+                'message': (
+                    f'git core.hooksPath is set to "{configured}" but that directory '
+                    f'does not exist — pre-commit hook is inactive. '
+                    f'Run: git config core.hooksPath <correct-path>'
+                ),
+            }]
+    return []
 
 
 def _header(text: str) -> str:
@@ -33,11 +73,12 @@ def main() -> int:
                         help='Pre-commit mode: staged files only, warnings allowed')
     args = parser.parse_args()
 
-    repo_root = Path(__file__).resolve().parents[3]
+    repo_root = _resolve_repo_root()
     base_ref = args.base_ref
     pre_commit = args.pre_commit
 
     all_findings: list[dict] = []
+    all_findings += _check_hooks_path()
     all_findings += check_article_i(repo_root, base_ref)
     all_findings += check_corpus(repo_root, base_ref)
     all_findings += check_stage_gate(repo_root, base_ref)
@@ -53,8 +94,8 @@ def main() -> int:
         sev = f['severity']
         print(f'\n[{sev}] {f.get("file", "")}')
         print(f'  {f["message"]}')
-        if citation := f.get('amendment_citation'):
-            print(f'  → {citation}')
+        if f.get('amendment_citation'):
+            print(f'  → {f["amendment_citation"]}')
 
     print()
     if violations:

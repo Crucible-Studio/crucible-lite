@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+# Crucible pre-push hook — catches --no-verify bypasses at push time.
+# Install: cp scripts/pre-push .git/hooks/pre-push && chmod +x .git/hooks/pre-push
+#
+# Runs the full constitutional check against the remote base ref.
+# Blocks the push if VIOLATIONS are found.
+# This is the last enforcement gate before changes leave the local repo.
+
+set -euo pipefail
+
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+cd "$REPO_ROOT"
+
+# Determine the remote ref being pushed to. $1 = remote name, $2 = remote URL.
+# Read push refspec from stdin: <local-ref> <local-sha1> <remote-ref> <remote-sha1>
+while IFS=' ' read -r local_ref local_sha remote_ref remote_sha; do
+    if [ "$local_sha" = "0000000000000000000000000000000000000000" ]; then
+        continue  # branch deletion — skip
+    fi
+
+    echo "Running Crucible constitutional pre-push check (${local_ref} → ${remote_ref})..."
+
+    # Diff against the remote tip (what the remote already has).
+    if [ "$remote_sha" = "0000000000000000000000000000000000000000" ]; then
+        # New branch — diff against merge-base with main or HEAD~1 as fallback.
+        BASE=$(git merge-base "$local_sha" origin/main 2>/dev/null || echo "${local_sha}^")
+    else
+        BASE="$remote_sha"
+    fi
+
+    python -m crucible.checks.runner --base-ref "$BASE"
+done

@@ -15,14 +15,15 @@ from pathlib import Path
 
 FIRMWARE_EXTENSIONS = {'.c', '.cpp', '.h', '.ino'}
 
+# Python Layer 2 files: the physics model and algorithm — same Article I bar as firmware.
+FIRMWARE_PYTHON_PATHS = {'src/signals.py', 'src/algorithm.py'}
+
 # Matches a bare numeric literal on a new (+) diff line.
 # Excludes: array indices, version strings, port numbers, hex addresses.
-# Error 14: re.IGNORECASE added so "Traces to" in any capitalisation is excluded.
 _NUMERIC = re.compile(
     r'^\+(?!.*//.*traces to).*?'          # new line, not already cited
     r'(?<!["\'/\w#])(\d+\.?\d*|\.\d+)'   # numeric literal
-    r'(?!["\'\w])',                        # not inside string/identifier
-    re.IGNORECASE                          # Error 14: case-insensitive citation pre-check
+    r'(?!["\'\w])'                         # not inside string/identifier
 )
 
 # A comment on the same or adjacent line that names a primitive or cites Amendment 1.
@@ -33,12 +34,25 @@ _CITATION = re.compile(
 
 
 def _extract_primitives(repo_root: Path) -> list[str]:
-    """Return primitive names from ratified Amendment 1, or [] if not ratified."""
+    """Return primitive names from ratified Amendment 1, or [] if not ratified.
+
+    Prefers the fragmented amendments/amendment_01_domain_primitives.md when the
+    amendments/ directory exists. Falls back to scanning the monolithic amendments.md.
+    """
+    # Fragmented path: load only the Amendment 1 file directly — no need to scan all amendments.
+    fragment = repo_root / 'docs' / 'governance' / 'amendments' / 'amendment_01_domain_primitives.md'
+    if fragment.exists():
+        text = fragment.read_text()
+        if 'NOT YET RATIFIED' in text or 'PROPOSED' in text:
+            return []
+        names = re.findall(r'^\s*\d+\.\s+([A-Z][^\(]+)', text, re.MULTILINE)
+        return [n.strip() for n in names]
+
+    # Monolithic fallback.
     amendments = repo_root / 'docs' / 'governance' / 'amendments.md'
     if not amendments.exists():
         return []
     text = amendments.read_text()
-    # Amendment 1 is ratified when its block has no PROPOSED line.
     block_match = re.search(
         r'### Amendment 1[^\n]*\n(.*?)(?=\n### Amendment|\Z)', text, re.DOTALL
     )
@@ -47,7 +61,6 @@ def _extract_primitives(repo_root: Path) -> list[str]:
     block = block_match.group(1)
     if 'PROPOSED' in block:
         return []
-    # Extract primitive names: lines starting with a number followed by a dot.
     names = re.findall(r'^\s*\d+\.\s+([A-Z][^\(]+)', block, re.MULTILINE)
     return [n.strip() for n in names]
 
@@ -66,18 +79,37 @@ def _get_diff(base_ref: Optional[str]) -> str:
     return result.stdout
 
 
+def _is_firmware_path(path: str) -> bool:
+    """True for firmware source or Python Layer 2 files."""
+    if Path(path).suffix in FIRMWARE_EXTENSIONS:
+        return True
+    return any(path == p or path.endswith('/' + p) for p in FIRMWARE_PYTHON_PATHS)
+
+
 def run(repo_root: Path, base_ref: Optional[str] = None) -> list[dict]:
     """Return list of findings. Each finding: {file, line, constant, severity}."""
     primitives = _extract_primitives(repo_root)
     findings = []
 
     if not primitives:
+        diff = _get_diff(base_ref)
+        # Committing firmware/Python source before domain primitives are defined is a VIOLATION.
+        has_firmware = any(
+            _is_firmware_path(line[4:].lstrip('b/'))
+            for line in diff.splitlines() if line.startswith('+++ ')
+        )
         findings.append({
-            'severity': 'WARNING',
+            'severity': 'VIOLATION' if has_firmware else 'WARNING',
             'file': 'docs/governance/amendments.md',
             'line': 0,
-            'message': 'Amendment 1 not ratified — Article I primitive check skipped. '
-                       'Run /spec collect to define domain primitives.',
+            'message': (
+                'Amendment 1 not ratified — Article I cannot be enforced. '
+                'No source commits are permitted until domain primitives are defined. '
+                'Run /spec collect to define domain primitives before proceeding.'
+            ) if has_firmware else (
+                'Amendment 1 not ratified — Article I primitive check skipped. '
+                'Run /spec collect to define domain primitives.'
+            ),
         })
         return findings
 
@@ -89,7 +121,7 @@ def run(repo_root: Path, base_ref: Optional[str] = None) -> list[dict]:
         if diff_line.startswith('--- ') or diff_line.startswith('+++ '):
             if diff_line.startswith('+++ '):
                 path = diff_line[4:].lstrip('b/')
-                current_file = path if Path(path).suffix in FIRMWARE_EXTENSIONS else None
+                current_file = path if _is_firmware_path(path) else None
             continue
         if diff_line.startswith('@@'):
             context_lines = []
@@ -99,9 +131,8 @@ def run(repo_root: Path, base_ref: Optional[str] = None) -> list[dict]:
             continue
 
         # Keep a rolling window of context to check for adjacent citations.
-        # Error 21B: context window expanded from 10 to 20 lines (±10 effective).
         context_lines.append(diff_line)
-        if len(context_lines) > 20:
+        if len(context_lines) > 10:
             context_lines.pop(0)
 
         match = _NUMERIC.match(diff_line)
@@ -109,17 +140,17 @@ def run(repo_root: Path, base_ref: Optional[str] = None) -> list[dict]:
             continue
 
         constant = match.group(1)
-        # Error 18/21C: skip trivial structural values unlikely to be domain constants.
-        # Extended set includes 0.5 and single-digit precision args to round().
-        if float(constant) in {0, 0.5, 1, 2, 10, 100, 1000}:
+        # Skip trivial values unlikely to be domain constants.
+        if float(constant) in (0, 1, 2, 10, 100, 1000):
             continue
 
-        # Check surrounding context for a citation.
+        # Require citation keyword AND at least one actual primitive name from Amendment 1.
+        # Keyword alone (e.g. "# Traces to: sensor mismatch (empirical)") is not enough —
+        # the primitive name closes the fake-comment bypass.
         context_text = '\n'.join(context_lines)
-        if _CITATION.search(context_text):
-            continue
-        # Also check if any primitive name appears nearby.
-        if any(p.lower() in context_text.lower() for p in primitives):
+        has_keyword = bool(_CITATION.search(context_text))
+        has_primitive = any(p.lower() in context_text.lower() for p in primitives)
+        if has_keyword and has_primitive:
             continue
 
         findings.append({

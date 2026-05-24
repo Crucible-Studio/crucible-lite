@@ -68,6 +68,10 @@ map to governance rules as follows:
 | Scaffold modules regenerated after Stage 1 gate without authorization | Amendment 11 — Scaffold Immutability |
 | Direct edit to generated artifact without corpus change | Amendment 12 — Corpus Supremacy |
 | Layer 2 swap (signals.py / algorithm.py) without Hearing | Amendment 12 — Corpus Supremacy |
+| Layer 2 change without complete Judicial Hearing | Amendment 12 — Corpus Supremacy |
+| Hearing suggestion overridden by engineer confidence | Amendment 12 — Informal Ruling |
+| Hearing recorded without all three required sections | Amendment 12 — Judicial Independence |
+| signals.py changed with Bode-only validation (no time-domain overlay) | Amendment 13 — Time-Domain Validation Mandate |
 
 ---
 
@@ -82,6 +86,8 @@ map to governance rules as follows:
 7. `docs/governance/case_law.md` — enacted bills and rulings (authorized changes)
 8. `docs/toolchain_config.md` — active toolchain, stage lock status
 9. `docs/device_context.md` — stage gate status, open anomalies
+10. `docs/governance/hearings/MANIFEST.md` — hearing manifest (if fragmented corpus active)
+11. Each `docs/governance/hearings/H-*.md` file mentioned in the manifest — structural validation
 
 ---
 
@@ -177,6 +183,65 @@ This check also applies to the current session:
 - If an agent invoked `/toolchain scaffold` and `src/events.py` already existed:
   check whether the human said "re-scaffold approved" in this session.
   If no approval: **AMENDMENT-11-VIOLATION**
+
+### Corpus Supremacy violations (Amendment 12)
+
+**INFORMAL-RULING-VIOLATION:** A Hearing suggestion that was overridden by engineer
+confidence is an informal ruling — not permitted under Article II.
+
+Detect pattern:
+1. Scan session output or commit messages for Hearing suggestions: phrases like
+   "/judicial hear", "open a Hearing for", "this requires a Hearing", "Hearing is
+   required before", "stop and open a Hearing".
+2. Check case_law.md (and hearings/MANIFEST.md if present) for a corresponding
+   Judicial Hearing entry that covers the same file or topic.
+3. If the suggestion exists but no Hearing entry does: **INFORMAL-RULING-VIOLATION**.
+   The human overrode the process with confidence and acted without adjudication.
+   The action is not retroactively authorized — it requires a retroactive Hearing.
+
+Resolution path: run `/judicial hear` to retroactively adjudicate the decision.
+The retrospective Hearing must include full attorney debate — it cannot be abbreviated
+because "we already decided." The ruling must either authorize the committed change
+or require it to be reverted.
+
+**JUDICIAL-INDEPENDENCE-VIOLATION:** A Hearing entry that is missing one or more of
+the three required sections is an informal ruling masquerading as a Hearing.
+
+A complete Judicial Hearing entry MUST contain all three sections:
+  1. `## Attorney-A argued:` (or `Attorney-A position:`) — non-empty
+  2. `## Attorney-B argued:` (or `Attorney-B position:`) — non-empty
+  3. `## Justice ruled:` (or `Justice ruling:`) — non-empty
+
+Detect pattern:
+1. For each Hearing entry in case_law.md (H-NNN header blocks) or each file in
+   `docs/governance/hearings/`, check for all three required sections.
+2. If any section is missing or empty: **JUDICIAL-INDEPENDENCE-VIOLATION**.
+   The ruling was made without adversarial debate — which is the entire point of the
+   Judicial process. A ruling without Attorney-B means only one side was heard.
+3. Also check: is the author of the Hearing suggestion the same as the recorded
+   ruling party? If yes and no opposing attorney section exists, flag as
+   JUDICIAL-INDEPENDENCE-VIOLATION — self-adjudicated ruling.
+
+Resolution path: hold a proper Hearing via `/judicial hear` with attorney debate recorded.
+The original informal entry must be marked SUPERSEDED or removed.
+
+### Time-domain validation violations (Amendment 13)
+
+**AMENDMENT-13-VIOLATION:** A change to `src/signals.py` was committed with
+frequency-domain (Bode) evidence only — no time-domain overlay was produced or
+human-confirmed before the commit.
+
+Detect pattern:
+1. Scan commits that modify `src/signals.py`.
+2. Check for corresponding time-domain overlay evidence: look in `docs/plots/` for a
+   file named with the pattern `*time*domain*`, `*vs_real*`, `*synthetic_vs*`, or
+   `*overlay*` created within the same session (within ±1 hour of the commit timestamp).
+3. Check case_law.md or hearing entries for the phrase "time-domain overlay confirmed"
+   or "time-domain match confirmed" by the human before the commit.
+4. If neither: **AMENDMENT-13-VIOLATION** — Bode-only validation, time-domain not confirmed.
+
+Note: this check requires Amendment 13 to be ratified. If Amendment 13 is PROPOSED,
+emit a WARNING reminding that time-domain validation is recommended before ratification.
 
 ### Human-in-the-loop violations (Article II — human side)
 

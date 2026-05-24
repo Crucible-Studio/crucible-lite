@@ -1,431 +1,510 @@
-# Onboarding — Start Here
+# Crucible — Onboarding Guide
 
-> **If you are Claude Code:** read [`CLAUDE.md`](CLAUDE.md) first. It tells you what governs your behaviour, where every file lives, and what you must not do without human approval.
+> **If you are Claude Code:** read [`CLAUDE.md`](CLAUDE.md) first. It maps every file, command, agent, and enforcement hook. This guide is the workflow companion — read CLAUDE.md alongside it.
 
 **Estimated time:** 30 minutes to first running session.
 
 ---
 
-## What you are looking at
+## Prerequisites — read before your first session
 
-Crucible is a governance framework for hardware development. It is not a library or a build tool. It is a set of rules, agent workflows, and document templates that enforce the same discipline in hardware development that good CI/CD enforces in software development.
+### 1. [CONSTITUTION.md](CONSTITUTION.md)
+The two unconditional Articles and the four-branch governance system. Non-negotiable.
 
-The most important thing to understand before touching anything:
+### 2. [CLAUDE.md](CLAUDE.md)
+Repo map, command set, agent roster, enforcement stack, and corpus structure.
+Read this before any coding session.
 
-> **An agent executes. A human decides.**  
-> Every agent in this framework does work — builds, simulates, plots, tests — but every decision about direction, threshold, or design is made by you.
+### 3. [docs/governance/amendments/MANIFEST.md](docs/governance/amendments/MANIFEST.md)
+One-row-per-amendment status index. Always small, always current. Load this instead of
+scanning the full `amendments.md` stub.
 
----
+### 4. The Hearing procedure
+Every Judicial Hearing must produce a structured file with all three required sections
+(Attorney-A, Attorney-B, Justice ruling). A Hearing missing any section is an
+**informal ruling** — it does not satisfy Amendment 12 and will be flagged.
 
-## Reading order
-
-Read these in order. Each takes 5–10 minutes.
-
-### 1. This file (you are here)
-Establishes what to read and why.
-
-### 2. [README.md](README.md)
-The elevator pitch: what Crucible solves, the five failure modes, the two Articles, the pipeline map. Understand the problem before the solution.
-
-### 3. [CONSTITUTION.md](CONSTITUTION.md)
-The governance model in full. Pay particular attention to:
-- Article I (Signal First) — you will need to name your domain primitives before writing any code
-- The distinction between a **Bill** (a change proposal), a **Hearing** (a conflict resolution), and an **Amendment** (a new governance rule)
-- The hw-advisor role — this is what gives you design feedback grounded in test results
-
-### 4. [docs/governance/adoption_guide.md](docs/governance/adoption_guide.md)
-How to fork and adapt this framework for your specific device. Covers which parts are universal, which parts are device-specific, and what you must write before your first session.
-
-### 5. [docs/testing/hil_testing_guide.md](docs/testing/hil_testing_guide.md)
-The HIL-first principle in detail. Read this before you do anything with hardware. Understanding *why* Stage 0 runs first will save you significant debugging time.
+### 5. [docs/governance/adoption_guide.md](docs/governance/adoption_guide.md)
+How to fork and adapt this framework for your specific device. What is universal,
+what is device-specific, and what you must write before your first session.
 
 ---
 
-## First session checklist
-
-Before running `/session 0`, you need four things:
+## Prerequisites — tooling
 
 ### A. Python environment
-
 ```bash
-pip install -r requirements.txt
+pip install numpy matplotlib bleak pytest chromadb sentence-transformers mem0ai
 ```
+Check: `which renode` / `which pio` / `which ninja`
 
-This installs numpy, matplotlib, and bleak. Verify external tools are on your PATH:
-
-```bash
-which renode      # Renode simulation engine — https://renode.io
-which pio         # PlatformIO — pip install platformio
-which ninja       # Zephyr link step — brew install ninja
-```
-
-Missing tools produce warnings at session start, not errors — they are only needed for the paths that use them (Renode for Stage 1 firmware path, `pio`/`ninja` for Stage 0 firmware build).
-
-### B. Your domain primitives (Article I compliance)
-
-Write down — on paper is fine — the two or three physical quantities your device ultimately measures or responds to. These are not sensor readings. These are the things the person or system using your device actually cares about.
-
-Examples:
-- *Gait wearable:* Symmetry Index (%) derived from stance duration → traces to cadence and step length
-- *Smart thermostat:* Room temperature error (°C) → traces to thermal mass and heat transfer
-- *Air quality monitor:* PM2.5 concentration (μg/m³) → traces to particulate mass and sensor path length
-
-If you cannot name these, stop. Read Article I again. Do not proceed past this step until you can name your primitives. Every threshold you set without naming a primitive is a guess.
-
-### C. Your dev kit and toolchain
-
+### B. Your firmware toolchain
 Know the answers to:
-- What board are you using? (exact model, part number)
-- What sensor(s) are on it or wired to it?
+- What board/MCU? (needed for FQBN in PlatformIO or Arduino CLI)
 - How do you flash firmware? (UF2, J-Link, DFU, JTAG)
 - How do you observe output? (USB serial, BLE, RTT, UART)
 
-Run `/toolchain init` to record these formally. The toolchain janitor will walk you through each field interactively.
+Run `/toolchain init` to record these formally.
 
-### D. Activate git hooks (one command per clone)
+### C. Install git hooks (one command per clone)
 
 ```bash
-git config core.hooksPath .githooks
+cp scripts/pre-commit .git/hooks/pre-commit && chmod +x .git/hooks/pre-commit
+cp scripts/pre-push   .git/hooks/pre-push   && chmod +x .git/hooks/pre-push
 ```
 
-This activates the Article I pre-commit enforcement hook. It fires on every `git commit` — whether you wrote the code or an agent did. Any staged source file containing an empirical number, equation, or opaque setting without an Amendment 1 primitive citation will block the commit and show the offending lines.
+This installs two enforcement hooks:
 
-This applies to you as much as to agents. The constitution does not distinguish.
+- **`pre-commit`** — runs the constitutional check on every staged commit: Article I primitive
+  citation check, Amendment 12 Corpus Supremacy check, and Stage Gate Order check. Any staged
+  source file containing an empirical constant without a domain primitive citation blocks the commit.
+- **`pre-push`** — re-runs the full constitutional check against the remote ref before any push.
+  This catches `--no-verify` bypasses at commit time — the hook fires again at push and cannot
+  be skipped silently.
 
-### E. A git repository
+Both hooks apply to you as much as to agents. The constitution does not distinguish.
 
-This framework uses git as the record of decisions. Every Bill enacted, every Amendment ratified, every case law ruling recorded — all of it is a commit. Without git history, you have no audit trail.
+The Claude Code agent-side enforcement runs in addition to the git hooks via `.claude/hooks/`:
+- **`article1_check.py`** — fires on every `Edit` or `Write` tool call targeting source files
+- **`bash_write_guard.py`** — fires on every `Bash` tool call; blocks shell-path writes to
+  `src/signals.py` or `src/algorithm.py` without a Judicial Hearing on record
+
+### D. A git repository
+
+This framework uses git as the record of decisions. Every Bill enacted, every Amendment
+ratified, and every Judicial Hearing is a commit. Without git, the governance record
+cannot be reconstructed.
 
 ---
 
-## Complete workflow map
+## Corpus structure — where governance records live
 
-### New project (one-time setup)
+The governance corpus is split into two fragmented directories alongside the legacy monolithic files.
+Use the fragmented structure for all new entries.
+
+### Amendments
+
+```
+docs/governance/amendments/
+  MANIFEST.md                              ← machine-readable index (always small)
+  amendment_01_domain_primitives.md        ← written by /spec collect
+  amendment_02_stage_gate_order.md
+  ...
+  amendment_13_time_domain_validation.md
+```
+
+Each amendment is a standalone file. To ratify: run `/governance ratify N` (interactive) or
+manually change `Status: PROPOSED` to `Status: RATIFIED` in the file and in `MANIFEST.md`.
+The enforcement checks read `MANIFEST.md` first (fast, always-small index) and load individual
+files only when content is needed (e.g., primitive names from Amendment 1).
+
+`docs/governance/amendments.md` is now a stub index that links to the individual files.
+Do not add new amendment content there.
+
+### Hearings
+
+```
+docs/governance/hearings/
+  MANIFEST.md                              ← machine-readable index (always small)
+  H-001_hearing-name.md                   ← one file per Judicial Hearing
+  H-002_hearing-name.md
+  ...
+```
+
+Each Judicial Hearing gets its own file. A complete hearing file **must** have all three sections:
+
+```markdown
+## Attorney-A argued:     ← non-empty
+## Attorney-B argued:     ← non-empty
+## Justice ruled:         ← non-empty
+```
+
+A hearing entry missing any section is an **informal ruling** — it does not satisfy Amendment 12
+(Corpus Supremacy) and will be flagged by the police agent as `JUDICIAL-INDEPENDENCE-VIOLATION`.
+The enforcement check queries structural completeness, not keyword presence.
+
+`docs/governance/case_law.md` remains the record of non-hearing governance entries (Bills enacted,
+stage gate records). New Judicial Hearing entries go in `hearings/`.
+
+---
+
+## New project setup
 
 ```
 START NEW PROJECT
 │
-├─► pip install -r requirements.txt
-│     Installs: numpy, matplotlib, bleak, pytest
-│     Check: which renode  /  which pio  /  which ninja
+├─► Install git hooks ──────────────────────────────────────────────────────────────
+│     cp scripts/pre-commit .git/hooks/pre-commit && chmod +x .git/hooks/pre-commit
+│     cp scripts/pre-push   .git/hooks/pre-push   && chmod +x .git/hooks/pre-push
 │
-├─► /spec collect ──────────────────────────────────────────────────────────────────────┐
-│     │  Interview: device purpose, project target, pass/fail threshold,                │
-│     │  signal inventory, domain primitives, operating envelope                        │
-│     │  Writes: docs/device_context.md                                                 │
-│     │  Drafts: Amendment 1 (Domain Primitives)                                        │
-│     ▼                                                                                 │
-│   Human ratifies Amendment 1?                                                         │
-│     No ──► revise and re-ask                                                          │
-│     Yes──► Amendment 1 written to docs/governance/amendments.md                      │
-│            agent-updater ──► propagates primitives to code-reviewer,                 │
-│                               sw-advisor, hw-advisor, bill-drafter                   │
-│                                                                                       │
-├─► /toolchain init ─────────────────────────────────────────────────────────────────┐  │
-│     Register: board, FQBN, pins, libraries, repos                                  │  │
-│     Fill in: ## Firmware UART Format (event markers, field names, session_end)     │  │
-│     Writes: docs/toolchain_config.md (status: UNLOCKED)                            │  │
-│                                                                                     │  │
-├─► Ratify Amendments 2–4 + Amendment 11 ────────────────────────────────────────────┘  │
-│     Amendment 2: Stage Gate Order                                                      │
-│     Amendment 3: Toolchain Alignment                                                   │
-│     Amendment 4: Three-Strike Rule                                                     │
-│     Amendment 11: Scaffold Immutability                                                │
-│     (remove PROPOSED prefix in amendments.md for each)                                 │
-│                                                                                        │
-└─► Ready for /session 0 ◄───────────────────────────────────────────────────────────┘
+├─► /spec collect ──────────────────────────────────────────────────────────────────┐
+│     │  Interview: device purpose, project target, pass/fail threshold,            │
+│     │  signal inventory, domain primitives, operating envelope                    │
+│     │  (Use /spec fast for single-pass intake if you know all answers)            │
+│     │                                                                             │
+│     ▼                                                                             │
+│   Human ratifies Amendment 1?                                                     │
+│     No ──► revise and re-ask                                                      │
+│     Yes──► Amendment 1 written to:                                                │
+│              docs/governance/amendments/amendment_01_domain_primitives.md         │
+│              docs/governance/amendments/MANIFEST.md row 1 updated to RATIFIED    │
+│            agent-updater ──► propagates primitives to code-reviewer,             │
+│                               sw-advisor, hw-advisor, bill-drafter               │
+│                                                                                   │
+├─► /toolchain init ────────────────────────────────────────────────────────────────┤
+│     Fill in: ## Firmware UART Format (event markers, field names, session_end)    │
+│     Writes: docs/toolchain_config.md (status: UNLOCKED)                          │
+│                                                                                   │
+├─► /governance ratify 2 3 4 12 ──────────────────────────────────────────────────  │
+│     For each: updates amendment_NN_slug.md → Status: RATIFIED                    │
+│               updates MANIFEST.md row → Status: RATIFIED                         │
+│     Amendment 2:  Stage Gate Order                                                │
+│     Amendment 3:  Toolchain Alignment                                             │
+│     Amendment 4:  Three-Strike Rule                                               │
+│     Amendment 11: Scaffold Immutability (recommended)                            │
+│     Amendment 12: Corpus Supremacy (governs signals.py and algorithm.py)         │
+│                                                                                   │
+├─► agent-updater ──► propagate stage gate/toolchain/three-strike/corpus rules     │
+│                                                                                   │
+└─► Ready for /session 0 ──────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-### Every session start (session initialisation)
+## Stage 0 — HIL Toolchain Lock
+
+**Purpose:** Prove the development loop works before any algorithm work begins.
+
+**Why first:** HIL failures at Stage 0 cost 20 minutes. Discovered at Stage 3, they cost days.
+Stage 0 proves exactly four things:
+1. Build toolchain produces a flashable binary for this specific board
+2. Flash mechanism works end-to-end
+3. Observation path works (USB serial / BLE / UART / RTT)
+4. Sensor hardware is alive over its interface
 
 ```
-/session [stage]
+/session 0
 │
-Step 0a — Spec check
-│  Read docs/device_context.md
-│  Placeholder text? ──► STOP: "Run /spec collect"
-│  Populated? ──► print project target + threshold
+Step 0a — CONSTITUTION.md loaded
 │
 Step 0b — Toolchain check
 │  Read docs/toolchain_config.md
-│  Missing? ──► STOP: "Run /toolchain init"
-│  Stage 0 not yet closed AND status UNLOCKED? ──► allow (Stage 0 will lock it)
-│  Stage 0 closed AND status UNLOCKED? ──► STOP: "Run /toolchain lock"
 │  Blocked toolchain in active slot? ──► STOP: report conflict
 │
 Step 0c — Domain primitives check
+│  Read docs/governance/amendments/amendment_01_domain_primitives.md
 │  Amendment 1 ratified? ──► print primitives
 │  Not ratified? ──► STOP: "Run /spec collect"
 │
 Step 0d — Police check
-│  New project (no commits, no case_law entries)? ──► skip, note "new project"
-│  Has history? ──► audit last 10 commits vs case_law.md
-│     VIOLATION found? ──► STOP: print violation report
-│     WARNINGs? ──► print inline, session continues with acknowledgement required
-│     CLEAN? ──► note "Police check: clean"
+│  New project? ──► skip, note "new project"
+│  Has history? ──► audit last 10 commits vs case_law.md + hearings/MANIFEST.md
 │
-Step 0e — Package check
-│  package-manager verifies Python dependencies
-│  Any missing? ──► install, then continue
+Step 0e — Checkpoint resume check
+│  session_checkpoint.md: IN_PROGRESS? ──► offer resume
 │
-Print session header ──► show stage status, toolchain summary, commands
+[GATE 0.1] Build smoke test — firmware compiles for target board
+[GATE 0.2] Flash smoke test — firmware runs on hardware
+[GATE 0.3] Observation smoke test — UART / BLE output visible and parseable
+[GATE 0.4] Sensor smoke test — sensor returns physically plausible values
 │
-└─► Proceed to requested stage
+All gates pass ──► Stage 0 CLOSED
+  │  1. Record Stage 0: CLOSED in toolchain_config.md
+  │  2. stage-compactor ──► case_law.md entry
+  │  3. /toolchain lock ──► stamp toolchain as Stage 0 validated
+  └─► Ready for /session 1
 ```
 
 ---
 
-### Per-stage flow (generic — applies to all stages)
+## Stage 1 — Simulation
+
+**Purpose:** Validate algorithm logic and signal model consistency using the two simulation paths.
+
+**Entry condition:** Stage 0 CLOSED.
+
+### Two simulation paths
 
 ```
-ENTER STAGE N
+Signal-only path (crucible/sim/signal_sim.py)
+  │  Pure Python, no firmware, runs in seconds
+  │  Input: src/signals.py generate(profile, condition) → sample array
+  │  Output: src/algorithm.py run(samples) → result
+  │
+Renode path (crucible/sim/renode.py)
+  │  Firmware in emulated hardware — validates firmware parity
+  │  Stage 1 gate REQUIRES at least one Renode run confirming parity
+  │
+Both paths must agree ──► parity confirmed ──► Stage 1 gate PASSES
+Both paths disagree   ──► STOP: escalate to Judicial Hearing
+```
+
+### Scaffold check (first run of Stage 1 only)
+`/toolchain scaffold` must have generated `src/` before the first simulation run:
+- `src/events.py`, `src/analysis.py`, `src/plot.py` — Layer 4 ephemeral files
+- These are **frozen at Stage 1 gate** (Amendment 11) — never edit directly
+
+### Amendment 12 — Layer 2 Corpus Supremacy
+Before any work on `src/signals.py` or `src/algorithm.py`, a Judicial Hearing is required.
+The `bash_write_guard.py` hook blocks Bash-path writes. The pre-commit hook blocks commits.
+
+```
+/session 1
 │
-├─ Prerequisite: Stage N-1 CLOSED (enforced by Amendment 2)
+Stage 1 pre-flight:
+│  Check for src/ ──► prompt scaffold if missing
+│  Read Amendment 1 primitives
+│  Run police check
+│  Check session_checkpoint.md
 │
-├─ Work loop ─────────────────────────────────────────────────────────┐
-│   │                                                                  │
-│   │  Agent executes procedure (simulation / firmware / field test)   │
-│   │                                                                  │
-│   │  Failure? ──► attempt 2 ──► attempt 3 ──► STOP (Amendment 4)   │
-│   │              Three-strike: full report to human                  │
-│   │              Human selects domain ──► /judicial bill if needed   │
-│   │                                                                  │
-│   │  Output deviates unexpectedly?                                   │
-│   │    ──► /advisor sw (algorithm) or /advisor hw (hardware)         │
-│   │    ──► findings → /judicial bill → /judicial hear → implement    │
-│   │                                                                  │
-│   │  Two agents produce conflicting results?                         │
-│   │    ──► /judicial hear ──► ruling ──► case_law.md ──► agent-updater│
-│   │                                                                  │
-│   └─────────────────────────────────────────── back to work loop ───┘
+WORK LOOP ──────────────────────────────────────────────────────────────────────────┐
+│                                                                                   │
+│  /judicial hear before first signals.py or algorithm.py write (Amendment 12)    │
+│  Develop signals.py + algorithm.py with Amendment 1 primitive citations          │
+│                                                                                   │
+│   /regression [profile]                                                           │
+│   │  signal-only across all profiles                                              │
+│   │  Fail 3x? ──► AMENDMENT-4-VIOLATION ──► /judicial hear                     │
+│   │                                                                               │
+│   /plot profile <name> ──► plotter generates signal diagnostic plot              │
+│   [Plot evidence required before any algorithm change Bill]                       │
+│                                                                                   │
+│   Conflicting agent findings?                                                    │
+│   ──► /judicial hear ──► hearings/H-NNN.md + MANIFEST.md updated                │
+│                                                                                   │
+└─────────────────────────────────────────────────────────────────── back ─────────┘
 │
-├─ Exit criteria check (human confirms each criterion explicitly)
-│
-├─ JUSTICE GATE ──────────────────────────────────────────────────────┐
-│   │                                                                  │
-│   ├─ /review code ──► any ARTICLE-I-VIOLATION? ──► Bill required     │
-│   ├─ /review doc  ──► any BLOCKER? ──► fix before gate               │
-│   ├─ police       ──► any VIOLATION? ──► STOP, rule before gate      │
-│   │                                                                  │
-│   │  All clean? ──► human confirms gate criteria met                 │
-│   │                                                                  │
-│   ├─ stage-compactor ──► freeze case law, write handoff record        │
-│   └─ Stage N marked CLOSED in toolchain_config.md                    │
-│
-└─► ENTER STAGE N+1
+Stage 1 gate check:
+│  /review code ──► ARTICLE-I-VIOLATION? ──► Bill required
+│  /review doc  ──► BLOCKER? ──► fix before gate
+│  police ──► VIOLATION? ──► STOP (checks hearings/MANIFEST for incomplete entries)
+│  All clean? ──► human confirms ──► stage-compactor ──► Stage 1 CLOSED
+│  /session clean ──► Mem0 selective forgetting of resolved threads
+└─► Ready for /session 2
 ```
 
 ---
 
-### Bill and Hearing flow (any time a change is needed)
+## Stage 2 — Firmware Integration
+
+**Purpose:** Validate that C firmware matches the Python algorithm model on real hardware.
+
+**Entry condition:** Stage 1 CLOSED.
+
+```
+/session 2
+│
+Stage 2 pre-flight:
+│  Check toolchain locked + Stage 1 CLOSED + police check
+│
+Firmware iteration loop:
+│  [Article I applies — every constant must cite Amendment 1 primitive]
+│  [Bills required for all firmware source changes]
+│
+  Build ──► flash ──► uart-reader captures ──► analysis.parse()
+  Signal-only vs firmware output:
+    Agree? ──► parity confirmed ──► continue
+    Disagree? ──► Judicial Hearing on parity failure
+│
+Stage 2 gate check:
+│  All profiles pass in both paths?
+│  police clean? ──► human confirms ──► stage-compactor ──► Stage 2 CLOSED
+└─► Ready for /session 3
+```
+
+---
+
+## Stage 3 — Field Test
+
+**Entry condition:** Stage 2 CLOSED. Human approval required (Article II).
+
+```
+/session 3
+│
+Stage 3 pre-flight [HUMAN APPROVAL REQUIRED]:
+│  "Ready to run field test?" ──► No? STOP
+│
+Field run ──► uart-reader / BLE transport ──► live data to docs/device_context.md
+│
+Post-field analysis:
+│  /regression with field replay data
+│  Anomaly requiring algorithm change? ──► Bill ──► Hearing ──► Stage 1 re-entry
+│
+Stage 3 gate check:
+│  police clean? ──► human confirms field performance meets project target (Amendment 1)
+│  stage-compactor ──► Stage 3 CLOSED
+└─► Ready for /session 4
+```
+
+---
+
+## Stage 4 — Host Integration
+
+**Entry condition:** Stage 3 CLOSED. Human approval required (Article II).
+
+```
+/session 4
+│
+Deploy to host [HUMAN APPROVAL REQUIRED] ──► integration testing
+│
+Stage 4 gate:
+│  police clean? ──► human confirms ──► stage-compactor ──► Stage 4 CLOSED
+│  /wiki generate ──► produce final docs/wiki/ output
+└─► Project complete
+```
+
+---
+
+## The judicial process — Bills and Hearings
 
 ```
 Change needed (algorithm, firmware, hardware, simulation)
 │
 ├─► /judicial bill "problem description"
-│     bill-drafter reads: amendments.md, case_law.md,
-│                          device_context.md, source files
-│     Evidence gate: physical evidence must exist in record
-│     Amendment gate: must name governing Article/Amendment
-│     Outcome gate: expected improvement in domain primitive units
-│     Scope gate: specific files/functions/values named
-│        │
-│        ├─ Gates pass ──► complete Bill output
-│        └─ Gates fail ──► INCOMPLETE report: "run /regression or /plot evidence first"
+│     bill-drafter reads: amendments/MANIFEST.md, case_law.md,
+│                          hearings/MANIFEST.md, device_context.md,
+│                          source files
+│     Evidence gate + Amendment gate + Outcome gate + Scope gate
+│        Gates pass ──► complete Bill output
+│        Gates fail ──► INCOMPLETE: "run /regression or /plot evidence first"
 │
 ├─► Human reviews Bill
 │
-├─► /judicial hear "Bill name" Position-A vs Position-B
+├─► /judicial hear "<name>" A vs B
 │     judicial-clerk ──► COURTROOM READY
 │     attorney-A + attorney-B argue in parallel
 │     (optional) /plot evidence ──► generate requested evidence
-│     (optional) Justice asks clarifying questions
 │     Justice rules ──► prevailing position + physical basis
-│     Prevailing attorney writes to case_law.md
+│     Prevailing attorney writes to:
+│       docs/governance/hearings/H-NNN_name.md     ← structured file
+│       docs/governance/hearings/MANIFEST.md       ← index row added
 │     agent-updater ──► if ruling changes agent scope: propose edits
+│     Amendment 12 ──► Corpus check now satisfied for covered files
 │
 └─► Implement on branch named in Bill ──► validate ──► merge
 ```
 
----
+**Hearing files must contain all three sections before commit:**
 
-### Housekeeping (on demand, no stage gate required)
+```markdown
+## Attorney-A argued:
+[non-empty — position assigned at hearing declaration]
 
-```
-On demand ──► any of:
+## Attorney-B argued:
+[non-empty — opposing position]
 
-  /review code    ──► code-reviewer  ──► ARTICLE-I, FSM, filters, units
-  /review doc     ──► doc-reviewer   ──► docs completeness, staleness, cross-refs
-  /review gov     ──► constitution-auditor ──► amendment conflicts, orphaned entries
-  /regression     ──► regression-runner ──► simulator-operator ──► plotter + uart-reader
-  /advisor sw     ──► sw-advisor     ──► profile matrix analysis, algorithm suggestions
-  /advisor hw     ──► hw-advisor     ──► BOM, pins, signal integrity, enclosure
-  /compact        ──► stage-compactor or doc triage
-  /plot profile   ──► plotter        ──► single profile diagnostic
-  /plot evidence  ──► plotter        ──► hearing or validation evidence
+## Justice ruled:
+[non-empty — ruling with physical basis]
 ```
 
 ---
 
-### Agent orchestration map
+## The enforcement stack
 
 ```
-Commands (human-invoked)          Agents (AI-executed)
-─────────────────────────         ────────────────────────────────────────────
+Layer 1 — Agent-side hooks (Claude Code, real-time)
+  • article1_check.py  → blocks Edit/Write to source file with uncited constant
+  • bash_write_guard.py→ blocks Bash write to src/signals.py or src/algorithm.py
+                         without a Judicial Hearing on record
 
-/session ─────────────────────►  police
-                                  package-manager
-                                  stage-compactor
-                                  agent-updater (after Amendment ratification)
+Layer 2 — Pre-commit hook
+  Install: cp scripts/pre-commit .git/hooks/pre-commit && chmod +x .git/hooks/pre-commit
+  • Article I    → uncited constant blocks commit
+  • Amendment 12 → no Layer 2 commit without complete Hearing
+  • Amendment 2  → stage gate order enforced
 
-/judicial hear ───────────────►  judicial-clerk
-                                  ├─► attorney-A
-                                  ├─► attorney-B
-                                  └─► (optional) plotter, simulator-operator
-                                  agent-updater (after ruling)
+Layer 3 — Pre-push hook (catches --no-verify bypasses)
+  Install: cp scripts/pre-push .git/hooks/pre-push && chmod +x .git/hooks/pre-push
+  • Same checks as Layer 2, against remote ref; cannot be silently skipped
 
-/judicial bill ───────────────►  bill-drafter
-
-/regression ──────────────────►  regression-runner
-                                  └─► simulator-operator (per profile)
-                                        ├─► [Path A] src/signals.py + src/algorithm.py
-                                        ├─► [Path B] RenoneBridge → uart-reader
-                                        ├─► compare_paths() if both available
-                                        └─► plotter
-
-/plot evidence ───────────────►  plotter
-/plot profile ────────────────►  plotter
-
-/review code ─────────────────►  code-reviewer
-/review doc ──────────────────►  doc-reviewer
-/review gov ──────────────────►  constitution-auditor
-/advisor sw ──────────────────►  sw-advisor
-/advisor hw ──────────────────►  hw-advisor
-/compact ─────────────────────►  stage-compactor
-/toolchain ───────────────────►  (direct file writes — no agent)
-/spec ────────────────────────►  (direct file writes — no agent)
-
-/gen-new-agent ───────────────►  (human executes — no agent by design)
+Layer 4 — Police agent (at stage gate / on demand)
+  • INFORMAL-RULING-VIOLATION        — Hearing suggestion bypassed
+  • JUDICIAL-INDEPENDENCE-VIOLATION  — Hearing missing a required section
+  • AMENDMENT-13-VIOLATION           — signals.py committed with Bode-only validation
+  • AMENDMENT-11-VIOLATION           — scaffold re-run without authorization
+  • ARTICLE-I/II-VIOLATION           — uncited constant or unauthorized change
 ```
 
 ---
 
-## The five stages at a glance
+## The hybrid execution tier system
 
-| Stage | What happens | Entry condition |
-|-------|-------------|-----------------|
-| **0 — HIL Toolchain Lock** | Flash counter → IMU → algo USB → algo BLE. Prove the flash-run-observe loop works. Run `/toolchain scaffold` at end of Stage 0. | None — always first |
-| **1 — Simulation** | Two paths: **A** (signal-only — pure Python, fast) and **B** (Renode — firmware in emulator). Both must pass before gate. | Stage 0 closed + scaffold done |
-| **2 — Firmware Integration** | Port validated algorithm to dev kit. USB serial validation against Stage 1 Python model predictions. | Stage 1 closed |
-| **3 — Field Test** | Real device, real conditions. Field data replayed through `src/analysis.py` — same parser as simulation. | Stage 2 closed |
-| **4 — Host Integration** | Connect device to smart home hub, gateway, cloud, or other consumer system. | Stage 3 closed |
+Three sensitivity tiers control agent access and cloud forwarding:
 
-**Stage 0 failure is not a setback — it is the framework working.** A toolchain failure caught at Stage 0 takes 20 minutes to fix. The same failure caught at Stage 3 takes a week.
+| Tier | Content | Routing |
+|---|---|---|
+| PRIVATE | signals.py, algorithm.py, firmware source, raw field data | Local only |
+| DERIVED-OK | Scalars, plot files, summary JSON, pass/fail tables | Safe for cloud |
+| PUBLIC | Governance docs, agent definitions, CONSTITUTION.md | Unrestricted |
 
-### Stage 1 in detail — two simulation paths
-
-```
-Path A — Signal-only (no firmware, seconds to run):
-  src/signals.py::generate(profile, n_steps)   ← you write the physics model
-         │
-         ▼
-  src/algorithm.py::run(samples)               ← you write the Python algorithm
-         │
-         ▼
-  metrics dict  →  compare against pass/fail threshold
-
-Path B — Renode (firmware in emulator, minutes to run):
-  src/signals.py::generate(profile, n_steps)   ← same physics model
-         │
-         ▼
-  RenoneBridge(elf_path).run(samples)          ← firmware runs in Renode
-         │
-         ▼
-  src/analysis.py::PARSER.parse_log(text)      ← generated parser reads UART
-         │
-         ▼
-  metrics dict  →  compare against pass/fail threshold
-
-Path A+B — parity check:
-  run both → compare_paths() → if they diverge, Python model OR firmware is wrong
-  Justice decides which. Do not fix firmware until divergence is explained.
-```
-
-**What you must write before Stage 1:**
-- `src/signals.py::generate()` — physics model that synthesizes sensor data per profile
-- `src/algorithm.py::run()` — Python implementation of your algorithm (mirrors firmware logic)
-
-These are stubbed by `/toolchain scaffold`. The rest of `src/` is generated automatically.
+`crucible/hybrid/router.py` enforces tier boundaries via each agent's `contract.retrieves` block.
+`crucible/hybrid/ollama_client.py` provides local LLM inference (Ollama, default `qwen2.5:0.5b`).
+RAG stack: Chroma at `.chroma/`. Rebuild: `python -m crucible.rag.indexer`. Use `query_tiered()`.
 
 ---
 
-## How the agents work
+## The src/ module roles
 
-Agents are Claude subagents launched by slash commands. They do not make decisions — they execute procedures and present evidence. The key commands:
+`src/` is generated by `/toolchain scaffold`. Never edit directly — regenerate from corpus change.
+
+| File | Role | Amendment constraint |
+|---|---|---|
+| `src/events.py` | UART event dataclasses | Layer 4 — regen only (Am. 11/12) |
+| `src/analysis.py` | Project UartParser | Layer 4 — regen only (Am. 11/12) |
+| `src/plot.py` | Project plotting | Layer 4 — regen only (Am. 11/12) |
+| `src/signals.py` | Physics model / signal generator | Layer 2 — Judicial Hearing required (Am. 12) |
+| `src/algorithm.py` | Python algorithm model | Layer 2 — Judicial Hearing required (Am. 12) |
+
+Article I applies to `signals.py` and `algorithm.py` exactly as it does to firmware.
+Amendment 13 (PROPOSED) requires a time-domain overlay plot as evidence before `signals.py` changes.
+
+---
+
+## Housekeeping (on demand, no stage gate required)
 
 | Command | When to use |
-|---------|-------------|
-| `/session [stage]` | Orchestrate a full stage or check session status |
-| `/toolchain init` | Register hardware, FQBN, pins, libraries, UART format |
-| `/toolchain scaffold` | Generate `src/` modules after filling in UART format |
-| `/toolchain lock` | Stamp toolchain config as Stage 0 validated |
-| `/judicial hear "<name>" A vs B` | Declare a judicial hearing when two rules conflict |
-| `/regression [--signal-only\|--renode]` | Run full profile matrix; both paths if neither flag given |
-| `/advisor hw` | Get design suggestions grounded in your test results |
-| `/advisor sw` | Get algorithm suggestions grounded in simulation profiles |
-| `/plot profile <profile>` | Generate a signal diagnostic plot |
-| `/plot evidence <type>` | Collect evidence during a hearing or validation run |
-
-Agents read `docs/toolchain_config.md` before taking any toolchain-dependent action. A blocked toolchain produces a hard stop with the reason — the agent does not work around it.
+|---|---|
+| `/review code [focus]` | Article I audit of current `src/` |
+| `/review doc [focus]` | Documentation gaps, staleness, cross-doc consistency |
+| `/review gov [focus]` | Governance record health (amendments, case law, hearings) |
+| `/wiki generate` | Regenerate `docs/wiki/` from current corpus state |
+| `/compact [target]` | Compact spiralling docs (session_context.md, case_law.md) |
+| `/session refresh` | Re-read Amendment 1 + checkpoint mid-session if quality drops |
+| `/session clean` | Mem0 selective forgetting of resolved threads |
+| `/spec review` | Flag gaps in docs/device_context.md |
+| `/spec signals` | Add/update signal inventory only |
+| `/governance ratify N` | Interactively ratify amendment N |
 
 ---
 
-## The feedback loop
+## Quick reference — what blocks what
 
-The most important thing Crucible does that conventional CI/CD does not:
-
-```
-  Field test data ──► src/analysis.py ──► Simulation ──► Algorithm refinement ──► Firmware
-                       (same parser as                                                  │
-                        Renode path)                                                    ▼
-                                                             Field test ◄── HIL validation
-```
-
-When your field test produces a result that deviates from your simulation prediction, you do not immediately fix the firmware. You replay the field data through `src/analysis.py` — the same parser the simulation uses — and feed it into `src/algorithm.py`. If the Python model also deviates, the physics model is wrong — update it. If the Python model matches the field data but the firmware does not, the porting is wrong — fix the port. If neither matches, the signal model is wrong — update `src/signals.py`.
-
-This three-way diagnostic (field data vs Python model vs firmware) is only possible because the simulation, field data, and firmware all share the same `src/analysis.py` parser. That is why `/toolchain scaffold` generates it once and Amendment 11 freezes it — changing the parser mid-project destroys the traceability chain.
+| Action | Prerequisite |
+|---|---|
+| Write to `src/signals.py` or `src/algorithm.py` | Completed Judicial Hearing in `hearings/` |
+| Commit firmware source change | Enacted Bill in case_law.md |
+| Close a stage gate | All police violations resolved + human confirmation |
+| Flash firmware to hardware | Human approval (Article II) |
+| Run field test | Human approval (Article II) |
+| Ratify an amendment | Human confirmation via `/governance ratify N` |
+| Add a new agent | Human-executed protocol via `/gen-new-agent` |
 
 ---
 
-## Common mistakes (learn from the reference implementation)
+## Amendment quick reference
 
-**1. Using hardware as a debugging tool.**  
-The GaitSense project flashed the board 40+ times before establishing Crucible discipline. After establishing it, the algorithm was correct before the first flash. Stage 0 is cheap. Stage 3 with a broken algorithm is not.
-
-**2. Switching toolchains under pressure.**  
-Zephyr was blocked after three failed attempts to read the IMU. The temptation was to "just try one more thing." The three-strike rule prevented this. The switch to Arduino was clean, documented, and traceable. Two weeks later, nobody had to ask "why are we using Arduino?"
-
-**3. Setting thresholds by feel.**  
-The 30 dps push-off threshold in GaitSense is not a round number chosen because it looked right. It is derived: minimum push-off angular velocity at 0.1 m/s walking speed ≈ 100 dps; early-stance rebound artifact ≈ 9–14 dps; 30 dps gives 3× margin above noise with 3× margin below minimum signal. That derivation is in the amendment record. A threshold without a derivation is a guess.
-
-**4. Skipping the pathological test.**  
-BUG-013 in GaitSense: the SI computation was silently zeroed by an FPU emulator bug. Every healthy walker test passed. Only the pathological walker test (where the correct answer is non-zero) caught it. For any clinical or safety-adjacent device: always test under conditions where the correct answer is non-zero.
-
-**5. Letting the Python model and firmware diverge silently.**  
-The signal-only path (Path A) and the Renode path (Path B) must agree within tolerance before Stage 1 closes. If you skip the parity check, you will hit Stage 2 or Stage 3 with firmware that disagrees with your simulation — and you will not know which is correct. The compare_paths() report at Stage 1 gate is the only moment where you can resolve this before the hardware is in your hands.
-
-**6. Implementing `src/signals.py` as noise + a plausible mean.**  
-The signal generator is your physics model. A synthetic signal that looks right but has the wrong frequency content, wrong noise floor, or wrong transient shape will pass simulation but fail in the field. Derive every parameter in `generate()` from a domain primitive with a source citation — the same discipline Article I requires in firmware.
-
----
-
-## Getting help and contributing
-
-This framework is in early public release. Criticism is invited. File a GitHub Issue if:
-- A governance rule causes a worse hardware outcome than violating it would
-- The agent workflow fails in a way the documentation does not address
-- You have adopted this for a device type not covered by the examples and want to contribute a case study
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) for the full process.
+| # | Title | Key constraint |
+|---|---|---|
+| 1 | Domain Primitives | Every constant must trace to one of these — enforced by Article I |
+| 2 | Stage Gate Order | Stages must close in order; gate without compactor = VIOLATION |
+| 3 | Toolchain Alignment | Toolchain switch requires a Bill |
+| 4 | Three-Strike Rule | 3 consecutive failures → Judicial Hearing required |
+| 5 | Simulation Hardware Proxy | Simulation must run before hardware validation |
+| 6 | Signal Plot Mandate | Algorithm change requires a signal diagnostic plot |
+| 7 | Calibration Discipline | Calibration constants require derivation record |
+| 8 | Algorithm Search Honesty | Domain switch requires human selection |
+| 9 | Hardware Optimization Transparency | BOM change requires human authorization |
+| 10 | Interim Results Logging | Human decisions must be recorded |
+| 11 | Scaffold Immutability | Scaffold re-run after Stage 1 gate requires authorization |
+| 12 | Corpus Supremacy | Layer 2 write requires complete Hearing; Layer 4 is regen-only |
+| 13 | Time-Domain Validation (PROPOSED) | signals.py change requires time-domain overlay plot |

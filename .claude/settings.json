@@ -9,6 +9,15 @@
             "command": "python3 .claude/hooks/article1_check.py"
           }
         ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 .claude/hooks/bash_write_guard.py"
+          }
+        ]
       }
     ]
   }
