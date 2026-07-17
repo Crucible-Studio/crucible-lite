@@ -83,7 +83,7 @@ def _is_firmware_path(path: str) -> bool:
     """True for firmware source or Python Layer 2 files."""
     if Path(path).suffix in FIRMWARE_EXTENSIONS:
         return True
-    return any(path == p or path.endswith('/' + p) for p in FIRMWARE_PYTHON_PATHS)
+    return path in FIRMWARE_PYTHON_PATHS
 
 
 def run(repo_root: Path, base_ref: Optional[str] = None) -> list[dict]:
